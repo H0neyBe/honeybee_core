@@ -1,0 +1,10 @@
+[server]
+host = "127.0.0.1"
+port = 9001
+
+[database]
+url = "postgres://localhost/mydb"
+
+[logging]
+level = "debug"
+file = "logs/debug.log"
