@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   log::debug!("Config loaded successfully");
   log::debug!("Loaded config: {:#?}", config);
 
-  log::debug!("Starting Node Manager Thread: {}", thread::current().name().unwrap_or("main"));
+  log::debug!("Starting Node Manager On Thread: {}", thread::current().name().unwrap_or("main"));
   let node_manager = node_manager::NodeManager::start_node_manager(&config).await?;
 
   node_manager.listen().await?;
