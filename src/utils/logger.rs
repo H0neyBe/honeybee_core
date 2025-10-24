@@ -34,7 +34,7 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
       .format(|out, message, record| {
         out.finish(format_args!(
           "[{}][{}] {}",
-          chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+          chrono::Local::now().format("%Y-%m-%d %H:%M:%S.%9f"),
           record.level(),
           message
         ))
