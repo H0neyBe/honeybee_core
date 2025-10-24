@@ -50,6 +50,13 @@ impl Default for ServerConfig {
   }
 }
 
+impl From<ServerConfig> for std::net::SocketAddr {
+  fn from(config: ServerConfig) -> Self {
+    format!("{}:{}", config.host, config.port).parse().unwrap()
+  }
+}
+
+
 impl Default for DatabaseConfig {
   fn default() -> Self {
     DatabaseConfig {
@@ -89,5 +96,9 @@ impl Config {
     let toml_str = toml::to_string_pretty(self)?;
     fs::write(path, toml_str)?;
     Ok(())
+  }
+
+  pub fn get_address(&self) -> std::net::SocketAddr {
+    self.server.clone().into()
   }
 }

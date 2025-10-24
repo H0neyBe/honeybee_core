@@ -97,6 +97,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bee_message"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -232,6 +240,7 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "bee_config",
+ "bee_message",
  "chrono",
  "colored",
  "env_logger",
