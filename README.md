@@ -60,6 +60,14 @@ cargo run
 
 The server will start listening on the configured address (default: 127.0.0.1:9001).
 
+## Running with tracy
+
+```sh
+cargo run --features tracing
+```
+
+open tracy and connect and have fun
+
 ## Message Protocol
 
 Nodes communicate with the manager using JSON messages wrapped in a [`MessageEnvelope`](bee_message/src/node.rs):

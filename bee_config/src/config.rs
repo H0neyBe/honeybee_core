@@ -1,13 +1,16 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-  pub server: ServerConfig,
+  pub server:   ServerConfig,
   pub database: DatabaseConfig,
-  pub logging: LoggingConfig,
+  pub logging:  LoggingConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,7 +23,7 @@ pub struct ServerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DatabaseConfig {
-  pub url: String,
+  pub url:             String,
   pub max_connections: u32,
 }
 
@@ -28,15 +31,15 @@ pub struct DatabaseConfig {
 #[serde(default)]
 pub struct LoggingConfig {
   pub level: String,
-  pub file: Option<String>,
+  pub file:  Option<String>,
 }
 
 impl Default for Config {
   fn default() -> Self {
     Config {
-      server: ServerConfig::default(),
+      server:   ServerConfig::default(),
       database: DatabaseConfig::default(),
-      logging: LoggingConfig::default(),
+      logging:  LoggingConfig::default(),
     }
   }
 }
@@ -51,16 +54,13 @@ impl Default for ServerConfig {
 }
 
 impl From<ServerConfig> for std::net::SocketAddr {
-  fn from(config: ServerConfig) -> Self {
-    format!("{}:{}", config.host, config.port).parse().unwrap()
-  }
+  fn from(config: ServerConfig) -> Self { format!("{}:{}", config.host, config.port).parse().unwrap() }
 }
-
 
 impl Default for DatabaseConfig {
   fn default() -> Self {
     DatabaseConfig {
-      url: "postgres://localhost/mydb".to_string(),
+      url:             "postgres://localhost/mydb".to_string(),
       max_connections: 10,
     }
   }
@@ -70,7 +70,7 @@ impl Default for LoggingConfig {
   fn default() -> Self {
     LoggingConfig {
       level: "info".to_string(),
-      file: None,
+      file:  None,
     }
   }
 }
@@ -98,7 +98,5 @@ impl Config {
     Ok(())
   }
 
-  pub fn get_address(&self) -> std::net::SocketAddr {
-    self.server.clone().into()
-  }
+  pub fn get_address(&self) -> std::net::SocketAddr { self.server.clone().into() }
 }

@@ -1,7 +1,11 @@
 use bee_config::config::Config;
 
 use super::node::Node;
-use bee_message::node::NodeRegistration;
+use bee_message::node::{
+  MessageEnvelope,
+  MessageType,
+  NodeRegistration,
+};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -12,9 +16,9 @@ use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub struct NodeManager {
-  nodes: Arc<RwLock<HashMap<u64, Node>>>,
+  nodes:    Arc<RwLock<HashMap<u64, Node>>>,
   listener: TcpListener,
-  address: SocketAddr,
+  address:  SocketAddr,
 }
 
 impl NodeManager {
@@ -38,36 +42,73 @@ impl NodeManager {
       tokio::spawn(async move {
         // Handle the incoming node connection
         // You can parse node registration, add to nodes HashMap, etc.
-        log::debug!("Got a enw connection from: {}", addr);
+        log::debug!("Got a new connection from: {}", addr);
         let mut buf = [0; 1024];
         let n = socket.read(&mut buf).await.unwrap();
         let msg = String::from_utf8_lossy(&buf[..n]);
-        let registration: NodeRegistration = serde_json::from_str(&msg).unwrap();
-        let node: Node = Node::from(registration);
+
+        log::debug!("decoded a message: {:#?}", msg);
+        let registration: MessageEnvelope = serde_json::from_str(&msg).unwrap();
+
+        let node: Node = match registration.message {
+          bee_message::node::MessageType::NodeRegistration(node_reg) => Node::from(node_reg),
+          _ => {
+            log::error!(
+              "Received unexpected message type during registration: {:#?}",
+              registration.message
+            );
+            return;
+          } // Handle other message types or return early
+        };
         log::debug!("New node registered: {}", node.id);
         let node_id = node.id;
         nodes.write().await.insert(node.id, node);
         // Start a new task for the node
+
+        log::debug!(
+          "Listening for messages from node: {} from task: {:?}",
+          node_id,
+          tokio::task::id()
+        );
         let nodes_clone = Arc::clone(&nodes);
-        log::debug!("Starting a new task for node: {}", node_id);
         tokio::spawn(async move {
           // Task logic here
-          let read_lock = nodes_clone.read().await;
-          if let Some(node) = read_lock.get(&node_id) {
-            // Process messages for the specific node
+          log::debug!("Spawned task for node: {} Id: {:?}", node_id, tokio::task::id());
+          let mut buf = [0; 1024];
+          loop {
+            // Wait for messages from the node
+            let message = socket.read(&mut buf).await.unwrap();
+            let message: Result<MessageEnvelope, serde_json::Error> = serde_json::from_slice(&buf[..message]);
+            match message {
+              Ok(msg) => {
+                log::debug!("Received message from node: {}: {:#?}", node_id, msg);
+                // Handle the message
+                match msg.message {
+                  MessageType::NodeDrop => {
+                    log::debug!("closing connection with Node: ");
+                    break;
+                  }
+                  _ => {
+                    if let Some(node) = nodes_clone.write().await.get_mut(&node_id) {
+                      node.handle_message(msg, &mut socket).await;
+                    }
+                  }
+                }
+              }
+              Err(e) => {
+                log::error!("Error receiving message from node: {}: {}", node_id, e);
+                break;
+              }
+            }
           }
         });
       });
     }
   }
 
-  pub async fn get_address(&self) -> SocketAddr {
-    self.address
-  }
+  pub async fn get_address(&self) -> SocketAddr { self.address }
 
-  pub async fn get_nodes(&self) -> Arc<RwLock<HashMap<u64, Node>>> {
-    Arc::clone(&self.nodes)
-  }
+  pub async fn get_nodes(&self) -> Arc<RwLock<HashMap<u64, Node>>> { Arc::clone(&self.nodes) }
 
   pub async fn get_node(&self, id: u64) -> Option<Node> {
     let nodes = self.get_nodes().await;
