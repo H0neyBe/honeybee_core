@@ -1,3 +1,10 @@
+use std::error::Error;
+use std::fmt;
+use std::time::{
+  SystemTime,
+  UNIX_EPOCH,
+};
+
 use bee_message::node::{
   MessageEnvelope,
   MessageType,
@@ -8,12 +15,6 @@ use bee_message::node::{
 use serde::{
   Deserialize,
   Serialize,
-};
-use std::error::Error;
-use std::fmt;
-use std::time::{
-  SystemTime,
-  UNIX_EPOCH,
 };
 use tokio::net::TcpStream;
 

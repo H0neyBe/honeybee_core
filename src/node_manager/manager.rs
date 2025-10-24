@@ -1,18 +1,19 @@
-use bee_config::config::Config;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::thread;
 
-use super::node::Node;
+use bee_config::config::Config;
 use bee_message::node::{
   MessageEnvelope,
   MessageType,
   NodeRegistration,
 };
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::thread;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+
+use super::node::Node;
 
 #[derive(Debug)]
 pub struct NodeManager {

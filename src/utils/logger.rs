@@ -1,6 +1,7 @@
+use std::fs::OpenOptions;
+
 use bee_config::Config;
 use colored::Colorize;
-use std::fs::OpenOptions;
 
 pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
   let log_level: log::LevelFilter = config.logging.level.parse().unwrap();

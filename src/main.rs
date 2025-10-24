@@ -5,21 +5,21 @@
 mod node_manager;
 mod utils;
 
-use bee_config::Config;
-use bee_message::node;
 use std::path::Path;
 use std::{
   env,
   thread,
 };
-use utils::logger;
 
+use bee_config::Config;
+use bee_message::node;
 #[cfg(feature = "tracing")]
 use tracy_client::{
   Client,
   frame_mark,
   span,
 };
+use utils::logger;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
