@@ -44,7 +44,7 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
       .chain(
         OpenOptions::new()
           .create(true)
-          .write(true)
+          .truncate(true)
           // .append(true)
           .open(file)?,
       );

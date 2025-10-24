@@ -6,7 +6,7 @@ use serde::{
   Serialize,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
   pub server:   ServerConfig,
@@ -33,16 +33,6 @@ pub struct DatabaseConfig {
 pub struct LoggingConfig {
   pub level: String,
   pub file:  Option<String>,
-}
-
-impl Default for Config {
-  fn default() -> Self {
-    Config {
-      server:   ServerConfig::default(),
-      database: DatabaseConfig::default(),
-      logging:  LoggingConfig::default(),
-    }
-  }
 }
 
 impl Default for ServerConfig {
