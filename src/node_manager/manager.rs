@@ -101,6 +101,7 @@ impl NodeManager {
               }
             }
           }
+          log::debug!("Closing connection: {}", node_id);
         });
       });
     }
