@@ -12,6 +12,7 @@ use bee_message::node::{
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 
 use super::node::Node;
 
@@ -20,6 +21,8 @@ pub struct NodeManager {
   nodes:    Arc<RwLock<HashMap<u64, Node>>>,
   listener: TcpListener,
   address:  SocketAddr,
+  // Track spawned tasks to prevent leaks
+  tasks:    Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
 }
 
 impl NodeManager {
@@ -30,6 +33,7 @@ impl NodeManager {
       nodes: Arc::new(RwLock::new(HashMap::new())),
       listener,
       address,
+      tasks: Arc::new(RwLock::new(HashMap::new())),
     };
 
     Ok(node_manager)
@@ -40,6 +44,7 @@ impl NodeManager {
     loop {
       let (mut socket, addr) = self.listener.accept().await?;
       let nodes = Arc::clone(&self.nodes);
+      let tasks = Arc::clone(&self.tasks);
       
       tokio::spawn(async move {
         log::debug!("Got a new connection from: {}", addr);
@@ -87,9 +92,10 @@ impl NodeManager {
         
         nodes.write().await.insert(node.id, node);
         
-        // Spawn task to handle node messages
+        // Spawn task to handle node messages and track it
         let nodes_clone = Arc::clone(&nodes);
-        tokio::spawn(async move {
+        let tasks_clone = Arc::clone(&tasks);
+        let handle = tokio::spawn(async move {
           log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
           
           let mut buf = vec![0u8; 4096];
@@ -97,7 +103,7 @@ impl NodeManager {
             // Read message from node
             let n = match socket.read(&mut buf).await {
               Ok(0) => {
-                log::debug!("Node {} disconnected (connection closed)", node_id);
+                log::info!("Node {} disconnected (connection closed)", node_id);
                 break;
               }
               Ok(n) => n,
@@ -121,7 +127,7 @@ impl NodeManager {
             // Handle message
             match message.message {
               MessageType::NodeDrop => {
-                log::debug!("Node {} requested disconnect", node_id);
+                log::info!("Node {} requested disconnect", node_id);
                 break;
               }
               _ => {
@@ -137,8 +143,11 @@ impl NodeManager {
           
           // Clean up: remove node from registry
           if nodes_clone.write().await.remove(&node_id).is_some() {
-            log::debug!("Removed node {} from registry", node_id);
+            log::info!("Removed node {} from registry", node_id);
           }
+          
+          // Remove task from tracking
+          tasks_clone.write().await.remove(&node_id);
           
           // Ensure socket is properly closed
           if let Err(e) = socket.shutdown().await {
@@ -147,8 +156,27 @@ impl NodeManager {
           
           log::info!("Connection handler for node {} terminated", node_id);
         });
+        
+        // Track the spawned task
+        tasks.write().await.insert(node_id, handle);
       });
     }
+  }
+
+  pub async fn shutdown(&self) {
+    log::info!("Shutting down NodeManager...");
+    
+    // Abort all active tasks
+    let mut tasks = self.tasks.write().await;
+    for (node_id, handle) in tasks.drain() {
+      log::debug!("Aborting task for node {}", node_id);
+      handle.abort();
+    }
+    
+    // Clear all nodes
+    self.nodes.write().await.clear();
+    
+    log::info!("NodeManager shutdown complete");
   }
 
   pub async fn get_address(&self) -> SocketAddr { self.address }
@@ -162,7 +190,16 @@ impl NodeManager {
   }
 
   pub async fn is_running(&self) -> bool {
-    // Check if the NodeManager is running
     self.listener.local_addr().is_ok()
+  }
+  
+  pub async fn active_connections(&self) -> usize {
+    self.tasks.read().await.len()
+  }
+}
+
+impl Drop for NodeManager {
+  fn drop(&mut self) {
+    log::debug!("NodeManager dropped");
   }
 }

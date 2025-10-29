@@ -45,7 +45,7 @@ colored = "3.0.0"
 bee_config = { path = "./bee_config" }
 bee_message = { path = "./bee_message" }
 
-tracy-client = { version = "0.18.2", optional = true }
+tracy-client = { version = "0.18.2", default-features = false, features = ["enable", "system-tracing", "context-switch-tracing", "sampling", "code-transfer", "broadcast"], optional = true }
 tracing = { version = "0.1.41", optional = true }
 
 
