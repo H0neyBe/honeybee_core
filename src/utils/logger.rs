@@ -30,7 +30,9 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
   let mut base_dispatch = fern::Dispatch::new().chain(console_dispatch);
 
   // File output without colors
-  if let Some(file) = &config.logging.file {
+  if let Some(folder) = &config.logging.folder {
+    let file = std::path::PathBuf::from(folder).join(format!("debug-{}.log", chrono::Local::now().format("%Y%m%d_%H%M%S")));
+
     let file_dispatch = fern::Dispatch::new()
       .format(|out, message, record| {
         out.finish(format_args!(
@@ -45,6 +47,7 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         OpenOptions::new()
           .create(true)
           .truncate(true)
+          .write(true)
           // .append(true)
           .open(file)?,
       );
