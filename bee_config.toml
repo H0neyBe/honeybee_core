@@ -7,4 +7,4 @@ url = "postgres://localhost/mydb"
 
 [logging]
 level = "debug"
-file = "logs/debug.log"
+folder = "logs"
