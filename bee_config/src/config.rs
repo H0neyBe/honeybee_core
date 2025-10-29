@@ -32,7 +32,7 @@ pub struct DatabaseConfig {
 #[serde(default)]
 pub struct LoggingConfig {
   pub level: String,
-  pub file:  Option<String>,
+  pub folder:  Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -61,7 +61,7 @@ impl Default for LoggingConfig {
   fn default() -> Self {
     LoggingConfig {
       level: "info".to_string(),
-      file:  None,
+      folder:  None,
     }
   }
 }
