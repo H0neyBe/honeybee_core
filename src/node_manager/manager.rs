@@ -36,7 +36,7 @@ impl NodeManager {
   }
 
   pub async fn listen(&self) -> Result<(), std::io::Error> {
-    log::debug!("Starting listener");
+    log::info!("Starting listener");
     loop {
       let (mut socket, addr) = self.listener.accept().await?;
       let nodes = Arc::clone(&self.nodes);

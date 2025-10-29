@@ -29,6 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   #[cfg(feature = "tracing")]
   let _span = span!("Main");
 
+  println!("Starting Honeybee Core Node");
+
   let config = Config::load_or_create(Path::new("bee_config.toml"))?;
   logger::init_logger(&config)?;
 
