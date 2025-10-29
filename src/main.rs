@@ -32,7 +32,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   println!("Starting Honeybee Core Node");
 
   let config = Config::load_or_create(Path::new("bee_config.toml"))?;
-  logger::init_logger(&config)?;
+
+  match logger::init_logger(&config) {
+    Ok(_) => log::debug!("Logger initialized successfully"),
+    Err(e) => {
+      eprintln!("Failed to initialize logger: {}", e);
+      return Err(e);
+    }
+  }
 
   log::debug!("Config loaded successfully");
   log::debug!("Loaded config: {:#?}", config);
