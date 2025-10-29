@@ -9,7 +9,7 @@ use bee_message::node::{
   MessageType,
   NodeRegistration,
 };
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 
@@ -36,73 +36,116 @@ impl NodeManager {
   }
 
   pub async fn listen(&self) -> Result<(), std::io::Error> {
-    log::info!("Starting listener");
+    log::info!("Starting listener on {}", self.address);
     loop {
       let (mut socket, addr) = self.listener.accept().await?;
       let nodes = Arc::clone(&self.nodes);
+      
       tokio::spawn(async move {
-        // Handle the incoming node connection
-        // You can parse node registration, add to nodes HashMap, etc.
         log::debug!("Got a new connection from: {}", addr);
-        let mut buf = [0; 1024];
-        let n = socket.read(&mut buf).await.unwrap();
+        
+        // Read initial registration message
+        let mut buf = vec![0u8; 4096];
+        let n = match socket.read(&mut buf).await {
+          Ok(0) => {
+            log::warn!("Connection closed by {} before sending registration", addr);
+            return;
+          }
+          Ok(n) => n,
+          Err(e) => {
+            log::error!("Failed to read registration from {}: {}", addr, e);
+            return;
+          }
+        };
+        
         let msg = String::from_utf8_lossy(&buf[..n]);
+        log::debug!("Received registration message: {}", msg);
+        
+        // Parse registration
+        let registration: MessageEnvelope = match serde_json::from_str(&msg) {
+          Ok(reg) => reg,
+          Err(e) => {
+            log::error!("Failed to parse registration from {}: {}", addr, e);
+            return;
+          }
+        };
 
-        log::debug!("decoded a message: {:#?}", msg);
-        let registration: MessageEnvelope = serde_json::from_str(&msg).unwrap();
-
+        // Extract node from registration
         let node: Node = match registration.message {
-          bee_message::node::MessageType::NodeRegistration(node_reg) => Node::from(node_reg),
+          MessageType::NodeRegistration(node_reg) => Node::from(node_reg),
           _ => {
             log::error!(
               "Received unexpected message type during registration: {:#?}",
               registration.message
             );
             return;
-          } // Handle other message types or return early
+          }
         };
-        log::debug!("New node registered: {}", node.id);
+        
         let node_id = node.id;
+        log::info!("Node {} ({}) registered from {}", node_id, node.name, addr);
+        
         nodes.write().await.insert(node.id, node);
-        // Start a new task for the node
-
-        log::debug!(
-          "Listening for messages from node: {} from task: {:?}",
-          node_id,
-          tokio::task::id()
-        );
+        
+        // Spawn task to handle node messages
         let nodes_clone = Arc::clone(&nodes);
         tokio::spawn(async move {
-          // Task logic here
-          log::debug!("Spawned task for node: {} Id: {:?}", node_id, tokio::task::id());
-          let mut buf = [0; 1024];
+          log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
+          
+          let mut buf = vec![0u8; 4096];
           loop {
-            // Wait for messages from the node
-            let message = socket.read(&mut buf).await.unwrap();
-            let message: Result<MessageEnvelope, serde_json::Error> = serde_json::from_slice(&buf[..message]);
-            match message {
-              Ok(msg) => {
-                log::debug!("Received message from node: {}: {:#?}", node_id, msg);
-                // Handle the message
-                match msg.message {
-                  MessageType::NodeDrop => {
-                    log::debug!("closing connection with Node: ");
-                    break;
-                  }
-                  _ => {
-                    if let Some(node) = nodes_clone.write().await.get_mut(&node_id) {
-                      node.handle_message(msg, &mut socket).await;
-                    }
-                  }
-                }
-              }
-              Err(e) => {
-                log::error!("Error receiving message from node: {}: {}", node_id, e);
+            // Read message from node
+            let n = match socket.read(&mut buf).await {
+              Ok(0) => {
+                log::debug!("Node {} disconnected (connection closed)", node_id);
                 break;
+              }
+              Ok(n) => n,
+              Err(e) => {
+                log::error!("Error reading from node {}: {}", node_id, e);
+                break;
+              }
+            };
+            
+            // Parse message
+            let message: MessageEnvelope = match serde_json::from_slice(&buf[..n]) {
+              Ok(msg) => msg,
+              Err(e) => {
+                log::error!("Failed to parse message from node {}: {}", node_id, e);
+                continue;
+              }
+            };
+            
+            log::debug!("Received message from node {}: {:?}", node_id, message.message);
+            
+            // Handle message
+            match message.message {
+              MessageType::NodeDrop => {
+                log::debug!("Node {} requested disconnect", node_id);
+                break;
+              }
+              _ => {
+                if let Some(node) = nodes_clone.write().await.get_mut(&node_id) {
+                  node.handle_message(message, &mut socket).await;
+                } else {
+                  log::warn!("Received message for unknown node: {}", node_id);
+                  break;
+                }
               }
             }
           }
-          log::debug!("Closing connection: {}", node_id);
+          
+          // Clean up: remove node from registry
+          if nodes_clone.write().await.remove(&node_id).is_some() {
+            log::debug!("Removed node {} from registry", node_id);
+          }
+          
+          // Ensure socket is properly closed
+          if let Err(e) = socket.shutdown().await {
+            log::debug!("Error shutting down socket for node {}: {}", node_id, e);
+          }
+          
+          log::info!("Connection handler for node {} terminated", node_id);
         });
       });
     }
