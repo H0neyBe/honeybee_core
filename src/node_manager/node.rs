@@ -1,21 +1,11 @@
 use std::error::Error;
 use std::fmt;
-use std::time::{
-  SystemTime,
-  UNIX_EPOCH,
-};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use bee_message::node::{
-  MessageEnvelope,
-  MessageType,
-  NodeRegistration,
-  NodeStatus,
-  NodeType,
+use bee_message::{
+  NodeRegistration, NodeStatus, NodeStatusUpdate, NodeType, NodeToManagerMessage,
 };
-use serde::{
-  Deserialize,
-  Serialize,
-};
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -43,17 +33,17 @@ impl Error for HoneypotError {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Node {
-  pub id:         u64,
-  pub name:       String,
-  pub config:     NodeConfig,
-  pub status:     NodeStatus,
+  pub id: u64,
+  pub name: String,
+  pub config: NodeConfig,
+  pub status: NodeStatus,
   pub created_at: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeConfig {
-  pub address:   String,
-  pub port:      u16,
+  pub address: String,
+  pub port: u16,
   pub node_type: NodeType,
 }
 
@@ -68,37 +58,55 @@ impl Node {
     }
   }
 
-  fn current_timestamp() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() }
+  fn current_timestamp() -> u64 {
+    SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .unwrap_or_default()
+      .as_secs()
+  }
 
-  pub fn update_status(&mut self, status: NodeStatus) { self.status = status; }
+  pub fn update_status(&mut self, status: NodeStatus) {
+    self.status = status;
+  }
 
-  pub async fn handle_message(&mut self, message: MessageEnvelope, socket: &mut TcpStream) {
+  pub async fn handle_message(&mut self, message: NodeToManagerMessage, _socket: &mut TcpStream) {
     log::debug!("Handling message for node: {}", self.id);
-    match message.message {
-      MessageType::NodeStatusUpdate(status) => {
-        log::debug!("Received status update for node: {}: {:#?}", self.id, status);
-        // Handle the status update
-        self.status = status.status
+    match message {
+      NodeToManagerMessage::NodeStatusUpdate(status) => {
+        log::debug!("Received status update for node {}: {:?}", self.id, status.status);
+        self.status = status.status;
       }
-      _ => {
-        log::error!("Received unexpected message type for node: {}", self.id);
+      NodeToManagerMessage::NodeEvent(event) => {
+        log::debug!("Received event from node {}: {:?}", self.id, event);
+      }
+      NodeToManagerMessage::NodeDrop => {
+        log::info!("Node {} requested disconnect", self.id);
+        self.status = NodeStatus::Stopped;
+      }
+      NodeToManagerMessage::NodeRegistration(_) => {
+        log::warn!("Received unexpected registration message from node {}", self.id);
       }
     }
   }
 }
 
 impl From<NodeRegistration> for Node {
-  fn from(registration: NodeRegistration) -> Self {
+  fn from(reg: NodeRegistration) -> Self {
+    let config = NodeConfig {
+      address: reg.address,
+      port: reg.port,
+      node_type: reg.node_type,
+    };
+
     Node {
-      id:         registration.node_id,
-      name:       registration.node_name,
-      config:     NodeConfig {
-        address:   registration.address,
-        port:      registration.port,
-        node_type: registration.node_type,
-      },
-      status:     NodeStatus::Deploying,
-      created_at: Self::current_timestamp(),
+      id: reg.node_id,
+      name: reg.node_name,
+      config,
+      status: NodeStatus::Deploying,
+      created_at: SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs(),
     }
   }
 }

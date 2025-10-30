@@ -14,6 +14,7 @@ pub enum MessageType {
   NodeRegistration(NodeRegistration),
   NodeDrop,
   NodeStatusUpdate(NodeStatusUpdate),
+  Event(NodeEvent),
   NodeCommand(NodeCommand),
 }
 
@@ -31,6 +32,15 @@ pub struct NodeStatusUpdate {
   pub node_id: u64,
   pub status:  NodeStatus,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum NodeEvent {
+  Started,
+  Stopped,
+  Alarm,
+  Error(String),
+}
+
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeCommand {
