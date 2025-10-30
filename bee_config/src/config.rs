@@ -19,6 +19,7 @@ pub struct Config {
 pub struct ServerConfig {
   pub host: String,
   pub port: u16,
+  pub debug: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +41,7 @@ impl Default for ServerConfig {
     ServerConfig {
       host: "127.0.0.1".to_string(),
       port: 9001,
+      debug: false,
     }
   }
 }
