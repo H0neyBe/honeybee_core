@@ -1,9 +1,6 @@
 # Stage 1: Build the Rust application
 FROM rust:alpine as builder
 
-# Install dependencies
-RUN apk add --no-cache musl-dev
-
 # Set the working directory in the container
 WORKDIR /app
 
