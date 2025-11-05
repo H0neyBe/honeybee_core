@@ -39,7 +39,7 @@ pub struct LoggingConfig {
 impl Default for ServerConfig {
   fn default() -> Self {
     ServerConfig {
-      host: "127.0.0.1".to_string(),
+      host: "192.168.1.3".to_string(),
       port: 9001,
       debug: false,
     }

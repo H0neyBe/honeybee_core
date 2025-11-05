@@ -35,7 +35,7 @@ Configuration is stored in `bee_config.toml`:
 
 ```toml
 [server]
-host = "127.0.0.1"
+host = "192.168.1.3"
 port = 9001
 
 [database]
@@ -58,7 +58,7 @@ cargo build
 cargo run
 ```
 
-The server will start listening on the configured address (default: 127.0.0.1:9001).
+The server will start listening on the configured address (default: 192.168.1.3:9001).
 
 ## Running with tracy
 
