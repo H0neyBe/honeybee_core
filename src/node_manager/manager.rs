@@ -104,7 +104,8 @@ impl NodeManager {
           accepted: true,
           message: Some(format!("Node {} successfully registered", node.name)),
         });
-        
+        log::debug!("Sending registration ACK to node {}: {:#?}", node_id, ack);
+
         let ack_envelope = MessageEnvelope::new(PROTOCOL_VERSION, ack);
         
         if let Ok(ack_json) = serde_json::to_string(&ack_envelope) {

@@ -83,8 +83,8 @@ impl Node {
         log::info!("Node {} requested disconnect", self.id);
         self.status = NodeStatus::Stopped;
       }
-      NodeToManagerMessage::NodeRegistration(_) => {
-        log::warn!("Received unexpected registration message from node {}", self.id);
+      _ => {
+        log::warn!("Unhandled message type for node {}: {:?}", self.id, message);
       }
     }
   }

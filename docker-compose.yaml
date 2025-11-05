@@ -1,0 +1,11 @@
+services:
+  honeybee_core:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: honeybee_core
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./configs/core_config.yaml:/app/configs/config.yaml
+    restart: unless-stopped
