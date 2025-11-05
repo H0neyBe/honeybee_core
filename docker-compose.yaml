@@ -4,8 +4,7 @@ services:
       context: .
       dockerfile: dockerfile
     container_name: honeybee_core
-    ports:
-      - "9001:9001"
+    network_mode: "host"
     volumes:
       - ./configs/core_config.yaml:/app/configs/config.yaml
     restart: unless-stopped
