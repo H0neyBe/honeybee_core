@@ -108,9 +108,14 @@ impl NodeManager {
 
         let ack_envelope = MessageEnvelope::new(PROTOCOL_VERSION, ack);
         
-        if let Ok(ack_json) = serde_json::to_string(&ack_envelope) {
+        if let Ok(mut ack_json) = serde_json::to_string(&ack_envelope) {
+          // Add newline for line-delimited JSON protocol
+          ack_json.push('\n');
+          
           if let Err(e) = socket.write_all(ack_json.as_bytes()).await {
             log::error!("Failed to send registration ACK to node {}: {}", node_id, e);
+          } else if let Err(e) = socket.flush().await {
+            log::error!("Failed to flush registration ACK to node {}: {}", node_id, e);
           } else {
             log::debug!("Sent registration ACK to node {}", node_id);
           }
