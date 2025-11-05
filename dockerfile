@@ -19,6 +19,9 @@ FROM alpine:latest
 # Set the working directory in the container
 WORKDIR /app
 
+# Create logs directory
+RUN mkdir -p /app/logs
+
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/target/release/honeybee_core /app/honeybee_core
 
