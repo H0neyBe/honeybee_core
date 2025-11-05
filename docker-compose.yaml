@@ -3,8 +3,12 @@ services:
     build:
       context: .
       dockerfile: dockerfile
+      network: host
     container_name: honeybee_core
     network_mode: host
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     volumes:
       - ./bee_config.toml:/app/bee_config.toml
     restart: unless-stopped
