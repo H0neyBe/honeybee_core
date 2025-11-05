@@ -16,9 +16,6 @@ RUN cargo build --release
 # Stage 2: Create a smaller image with the compiled binary
 FROM alpine:latest
 
-# Install necessary runtime dependencies
-RUN apk add --no-cache libgcc libstdc++
-
 # Set the working directory in the container
 WORKDIR /app
 
