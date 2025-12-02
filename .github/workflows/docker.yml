@@ -12,7 +12,7 @@ on:
   workflow_dispatch:  # Manual trigger
 
 env:
-  IMAGE_NAME: h0neybe/honeybee-core
+  IMAGE_NAME: amazingmoaaz/honeybee-core
 
 jobs:
   build-and-push:
