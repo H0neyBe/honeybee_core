@@ -4,7 +4,13 @@ pub mod manager_to_node;
 pub mod core;
 
 // Re-export commonly used types
-pub use common::{MessageEnvelope, NodeStatus, NodeType, PROTOCOL_VERSION};
-pub use node_to_manager::{NodeEvent, NodeRegistration, NodeStatusUpdate, NodeToManagerMessage};
-pub use manager_to_node::{ManagerToNodeMessage, NodeCommand, RegistrationAck};
+pub use common::{MessageEnvelope, NodeStatus, NodeType, HoneypotStatus, PROTOCOL_VERSION};
+pub use node_to_manager::{
+    NodeEvent, NodeRegistration, NodeStatusUpdate, NodeToManagerMessage,
+    HoneypotStatusUpdate, HoneypotEvent,
+};
+pub use manager_to_node::{
+    ManagerToNodeMessage, NodeCommand, RegistrationAck,
+    InstallHoneypotCmd, StartHoneypotCmd, StopHoneypotCmd,
+};
 pub use core::BidirectionalMessage;
