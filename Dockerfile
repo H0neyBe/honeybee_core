@@ -1,7 +1,12 @@
-# Stage 1: Build with Rust nightly
-FROM rustlang/rust:nightly-alpine AS builder
+# Stage 1: Build with latest Rust nightly
+FROM alpine:3.19 AS builder
 
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
+# Install build dependencies
+RUN apk add --no-cache curl gcc musl-dev pkgconfig openssl-dev openssl-libs-static
+
+# Install rustup and nightly toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app
 COPY . .
