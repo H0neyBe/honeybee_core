@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  honeybee-core:
+    image: ${DOCKERHUB_USERNAME:-h0neybe}/honeybee-core:latest
+    container_name: honeybee-core
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./bee_config.toml:/app/bee_config.toml:ro
+      - honeybee-logs:/app/logs
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9001"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  honeybee-logs:
+
