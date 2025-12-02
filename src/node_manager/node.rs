@@ -1,35 +1,7 @@
-use std::error::Error;
-use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use bee_message::{
-  NodeRegistration, NodeStatus, NodeStatusUpdate, NodeType, NodeToManagerMessage,
-};
+use bee_message::node::{NodeRegistration, NodeStatus, NodeType};
 use serde::{Deserialize, Serialize};
-use tokio::net::TcpStream;
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum HoneypotError {
-  DeploymentFailed(String),
-  NodeNotFound(String),
-  CommandFailed(String),
-  DataCollectionFailed(String),
-  InvalidConfiguration(String),
-}
-
-impl fmt::Display for HoneypotError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      HoneypotError::DeploymentFailed(msg) => write!(f, "Deployment failed: {}", msg),
-      HoneypotError::NodeNotFound(msg) => write!(f, "Node not found: {}", msg),
-      HoneypotError::CommandFailed(msg) => write!(f, "Command failed: {}", msg),
-      HoneypotError::DataCollectionFailed(msg) => write!(f, "Data collection failed: {}", msg),
-      HoneypotError::InvalidConfiguration(msg) => write!(f, "Invalid configuration: {}", msg),
-    }
-  }
-}
-
-impl Error for HoneypotError {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Node {
@@ -63,30 +35,6 @@ impl Node {
       .duration_since(UNIX_EPOCH)
       .unwrap_or_default()
       .as_secs()
-  }
-
-  pub fn update_status(&mut self, status: NodeStatus) {
-    self.status = status;
-  }
-
-  pub async fn handle_message(&mut self, message: NodeToManagerMessage, _socket: &mut TcpStream) {
-    log::debug!("Handling message for node: {}", self.id);
-    match message {
-      NodeToManagerMessage::NodeStatusUpdate(status) => {
-        log::debug!("Received status update for node {}: {:?}", self.id, status.status);
-        self.status = status.status;
-      }
-      NodeToManagerMessage::NodeEvent(event) => {
-        log::debug!("Received event from node {}: {:?}", self.id, event);
-      }
-      NodeToManagerMessage::NodeDrop => {
-        log::info!("Node {} requested disconnect", self.id);
-        self.status = NodeStatus::Stopped;
-      }
-      _ => {
-        log::warn!("Unhandled message type for node {}: {:?}", self.id, message);
-      }
-    }
   }
 }
 
