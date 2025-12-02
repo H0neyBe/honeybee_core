@@ -1,6 +1,8 @@
-# Stage 1: Build
-FROM rust:1.75-alpine AS builder
+# Stage 1: Build with Rust nightly
+FROM rustlang/rust:nightly-alpine AS builder
+
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
+
 WORKDIR /app
 COPY . .
 RUN cargo build --release
@@ -14,4 +16,3 @@ COPY --from=builder /app/target/release/honeybee_core /app/honeybee_core
 COPY --from=builder /app/bee_config.toml /app/bee_config.toml
 EXPOSE 9001
 CMD ["./honeybee_core"]
-
