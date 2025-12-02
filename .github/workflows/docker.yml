@@ -5,14 +5,14 @@ on:
     branches:
       - main
       - master
-    paths:
-      - 'honeybee_core/**'
-      - '.github/workflows/docker.yml'
-  workflow_dispatch:
+      - Weza
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Manual trigger
 
 env:
-  REGISTRY: docker.io
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/honeybee-core
+  IMAGE_NAME: h0neybe/honeybee-core
 
 jobs:
   build-and-push:
@@ -31,24 +31,14 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=sha,prefix=
-            type=ref,event=branch
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./dockerfile
+          file: ./Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
