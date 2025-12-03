@@ -7,11 +7,18 @@ mod utils;
 
 use std::path::Path;
 use std::time::Duration;
-use std::{env, thread};
+use std::{
+  env,
+  thread,
+};
 
 use bee_config::Config;
 #[cfg(feature = "tracing")]
-use tracy_client::{frame_mark, span, Client};
+use tracy_client::{
+  Client,
+  frame_mark,
+  span,
+};
 use utils::logger;
 
 // Enable Tracy's global allocator for memory tracking
@@ -64,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
           let nodes = nm.get_nodes().await;
           let node_count = nodes.read().await.len();
           log::info!("Active connections: {}, Registered nodes: {}", active, node_count);
-          
+
           #[cfg(feature = "tracing")]
           {
             tracy_client::plot!("monitor.active_connections", active as f64);

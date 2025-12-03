@@ -1,11 +1,21 @@
 use std::error::Error;
 use std::fmt;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{
+  SystemTime,
+  UNIX_EPOCH,
+};
 
 use bee_message::{
-  NodeRegistration, NodeStatus, NodeStatusUpdate, NodeType, NodeToManagerMessage,
+  NodeRegistration,
+  NodeStatus,
+  NodeStatusUpdate,
+  NodeToManagerMessage,
+  NodeType,
 };
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 use tokio::net::TcpStream;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -33,17 +43,17 @@ impl Error for HoneypotError {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Node {
-  pub id: u64,
-  pub name: String,
-  pub config: NodeConfig,
-  pub status: NodeStatus,
+  pub id:         u64,
+  pub name:       String,
+  pub config:     NodeConfig,
+  pub status:     NodeStatus,
   pub created_at: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeConfig {
-  pub address: String,
-  pub port: u16,
+  pub address:   String,
+  pub port:      u16,
   pub node_type: NodeType,
 }
 
@@ -58,16 +68,9 @@ impl Node {
     }
   }
 
-  fn current_timestamp() -> u64 {
-    SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_secs()
-  }
+  fn current_timestamp() -> u64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() }
 
-  pub fn update_status(&mut self, status: NodeStatus) {
-    self.status = status;
-  }
+  pub fn update_status(&mut self, status: NodeStatus) { self.status = status; }
 
   pub async fn handle_message(&mut self, message: NodeToManagerMessage, _socket: &mut TcpStream) {
     log::debug!("Handling message for node: {}", self.id);
@@ -93,8 +96,8 @@ impl Node {
 impl From<NodeRegistration> for Node {
   fn from(reg: NodeRegistration) -> Self {
     let config = NodeConfig {
-      address: reg.address,
-      port: reg.port,
+      address:   reg.address,
+      port:      reg.port,
       node_type: reg.node_type,
     };
 
@@ -103,10 +106,7 @@ impl From<NodeRegistration> for Node {
       name: reg.node_name,
       config,
       status: NodeStatus::Deploying,
-      created_at: SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs(),
+      created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
     }
   }
 }

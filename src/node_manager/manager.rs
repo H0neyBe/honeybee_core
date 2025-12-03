@@ -3,22 +3,30 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use bee_config::Config;
-use bee_message::{ManagerToNodeMessage, MessageEnvelope, NodeToManagerMessage, RegistrationAck, PROTOCOL_VERSION};
-use tokio::io::AsyncReadExt;
+use bee_message::{
+  ManagerToNodeMessage,
+  MessageEnvelope,
+  NodeToManagerMessage,
+  PROTOCOL_VERSION,
+  RegistrationAck,
+};
+use tokio::io::{
+  AsyncReadExt,
+  AsyncWriteExt,
+};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 
 use super::node::Node;
-use tokio::io::AsyncWriteExt;
 
 #[derive(Debug)]
 pub struct NodeManager {
-  nodes: Arc<RwLock<HashMap<u64, Node>>>,
+  nodes:    Arc<RwLock<HashMap<u64, Node>>>,
   listener: TcpListener,
-  address: SocketAddr,
+  address:  SocketAddr,
   // Track spawned tasks to prevent leaks
-  tasks: Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
+  tasks:    Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
 }
 
 impl NodeManager {
@@ -107,7 +115,7 @@ impl NodeManager {
         log::debug!("Sending registration ACK to node {}: {:#?}", node_id, ack);
 
         let ack_envelope = MessageEnvelope::new(PROTOCOL_VERSION, ack);
-        
+
         if let Ok(ack_json) = serde_json::to_string(&ack_envelope) {
           if let Err(e) = socket.write_all(ack_json.as_bytes()).await {
             log::error!("Failed to send registration ACK to node {}: {}", node_id, e);
@@ -122,11 +130,7 @@ impl NodeManager {
         let nodes_clone = Arc::clone(&nodes);
         let tasks_clone = Arc::clone(&tasks);
         let handle = tokio::spawn(async move {
-          log::debug!(
-            "Started message handler for node: {} (task: {:?})",
-            node_id,
-            tokio::task::id()
-          );
+          log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
 
           let mut buf = vec![0u8; 4096];
           loop {
@@ -186,11 +190,7 @@ impl NodeManager {
     }
   }
 
-  pub async fn get_nodes(&self) -> Arc<RwLock<HashMap<u64, Node>>> {
-    Arc::clone(&self.nodes)
-  }
+  pub async fn get_nodes(&self) -> Arc<RwLock<HashMap<u64, Node>>> { Arc::clone(&self.nodes) }
 
-  pub async fn active_connections(&self) -> usize {
-    self.tasks.read().await.len()
-  }
+  pub async fn active_connections(&self) -> usize { self.tasks.read().await.len() }
 }
