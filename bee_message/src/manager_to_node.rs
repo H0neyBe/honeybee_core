@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
 /// Messages sent from Manager → Node
 
@@ -40,14 +43,12 @@ impl NodeCommand {
   }
 
   /// Custom command
-  pub fn custom(node_id: u64, command: String) -> Self {
-    Self { node_id, command }
-  }
+  pub fn custom(node_id: u64, command: String) -> Self { Self { node_id, command } }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RegistrationAck {
-  pub node_id: u64,
+  pub node_id:  u64,
   pub accepted: bool,
-  pub message: Option<String>,
+  pub message:  Option<String>,
 }

@@ -1,5 +1,12 @@
-use serde::{Deserialize, Serialize};
-use crate::common::{NodeStatus, NodeType};
+use serde::{
+  Deserialize,
+  Serialize,
+};
+
+use crate::common::{
+  NodeStatus,
+  NodeType,
+};
 
 /// Messages sent from Node → Manager
 
@@ -13,17 +20,17 @@ pub enum NodeToManagerMessage {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeRegistration {
-  pub node_id: u64,
+  pub node_id:   u64,
   pub node_name: String,
-  pub address: String,
-  pub port: u16,
+  pub address:   String,
+  pub port:      u16,
   pub node_type: NodeType,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeStatusUpdate {
   pub node_id: u64,
-  pub status: NodeStatus,
+  pub status:  NodeStatus,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

@@ -17,8 +17,8 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
-  pub host: String,
-  pub port: u16,
+  pub host:  String,
+  pub port:  u16,
   pub debug: bool,
 }
 
@@ -32,15 +32,15 @@ pub struct DatabaseConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LoggingConfig {
-  pub level: String,
-  pub folder:  Option<String>,
+  pub level:  String,
+  pub folder: Option<String>,
 }
 
 impl Default for ServerConfig {
   fn default() -> Self {
     ServerConfig {
-      host: "127.0.0.1".to_string(),
-      port: 9001,
+      host:  "127.0.0.1".to_string(),
+      port:  9001,
       debug: false,
     }
   }
@@ -62,8 +62,8 @@ impl Default for DatabaseConfig {
 impl Default for LoggingConfig {
   fn default() -> Self {
     LoggingConfig {
-      level: "info".to_string(),
-      folder:  None,
+      level:  "info".to_string(),
+      folder: None,
     }
   }
 }

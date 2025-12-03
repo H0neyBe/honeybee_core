@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
 /// Common types shared between node and manager messages
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -24,9 +27,7 @@ pub struct MessageEnvelope<T> {
 }
 
 impl<T> MessageEnvelope<T> {
-  pub fn new(version: u64, message: T) -> Self {
-    Self { version, message }
-  }
+  pub fn new(version: u64, message: T) -> Self { Self { version, message } }
 }
 
 /// Protocol version constant
