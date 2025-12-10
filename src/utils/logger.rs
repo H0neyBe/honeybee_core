@@ -19,7 +19,11 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 
       out.finish(format_args!(
         "[{}][{}] {}",
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S.%9f").to_string().black().dimmed(),
+        chrono::Local::now()
+          .format("%Y-%m-%d %H:%M:%S.%9f")
+          .to_string()
+          .black()
+          .dimmed(),
         level_colored,
         message
       ))
