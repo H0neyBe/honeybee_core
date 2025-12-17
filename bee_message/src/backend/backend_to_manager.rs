@@ -1,0 +1,38 @@
+use serde::{
+  Deserialize,
+  Serialize,
+};
+
+use crate::backend::lib::BackendType;
+// use crate::PotId;
+use crate::node::manager_to_node::NodeCommandType;
+use crate::common::NodeStatus;
+
+/// Messages sent from Backend → Manager
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BackendToManagerMessage {
+  BackendRegistration(BackendRegistration),
+  BackendCommand(BackendCommand),
+  BackendDrop,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BackendRegistration {
+  pub backend_id:   u64,
+  pub backend_name: String,
+  pub address:      String,
+  pub port:         u16,
+  pub backend_type: BackendType,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BackendCommand {
+  NodeCommand { node_id: u64, command: NodeCommandType },
+  BroadcastCommand { command: NodeCommandType },
+  GetNodes,
+  GetNode { node_id: u64 },
+  GetNodesByStatus { status: NodeStatus },
+  GetNodeCount,
+  RemoveNode { node_id: u64 },
+  GetActiveConnections,
+}

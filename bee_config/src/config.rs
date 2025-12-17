@@ -18,7 +18,8 @@ pub struct Config {
 #[serde(default)]
 pub struct ServerConfig {
   pub host:  String,
-  pub port:  u16,
+  pub node_port:  u16,
+  pub backend_port: u16,
   pub debug: bool,
 }
 
@@ -40,14 +41,19 @@ impl Default for ServerConfig {
   fn default() -> Self {
     ServerConfig {
       host:  "127.0.0.1".to_string(),
-      port:  9001,
+      node_port:  9001,
+      backend_port: 9002,
       debug: false,
     }
   }
 }
 
 impl From<ServerConfig> for std::net::SocketAddr {
-  fn from(config: ServerConfig) -> Self { format!("{}:{}", config.host, config.port).parse().unwrap() }
+  fn from(config: ServerConfig) -> Self {
+    format!("{}:{} | {}", config.host, config.node_port, config.backend_port)
+      .parse()
+      .unwrap()
+  }
 }
 
 impl Default for DatabaseConfig {

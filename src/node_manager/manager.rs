@@ -4,16 +4,9 @@ use std::sync::Arc;
 
 use bee_config::Config;
 use bee_message::{
-  ManagerToNodeMessage,
-  MessageEnvelope,
-  NodeToManagerMessage,
-  PROTOCOL_VERSION,
-  RegistrationAck,
+  BackendToManagerMessage, ManagerToBackendMessage, MessageEnvelope, BidirectionalMessage, NodeToManagerMessage, PROTOCOL_VERSION
 };
-use tokio::io::{
-  AsyncReadExt,
-  AsyncWriteExt,
-};
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -25,13 +18,15 @@ pub struct NodeManager {
   nodes:    Arc<RwLock<HashMap<u64, Node>>>,
   listener: TcpListener,
   address:  SocketAddr,
-  // Track spawned tasks to prevent leaks
   tasks:    Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
+  // channel reader and writer for manager to manager communication
+  reader:  tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
+  writer:  tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
 }
 
 impl NodeManager {
-  pub async fn start_node_manager(config: &Config) -> Result<Self, std::io::Error> {
-    let address = format!("{}:{}", config.server.host, config.server.port);
+  pub async fn build(config: &Config, reader: tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>, writer: tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>) -> Result<Self, std::io::Error> {
+    let address = format!("{}:{}", config.server.host, config.server.node_port);
     let listener = TcpListener::bind(&address).await?;
     let addr = listener.local_addr()?;
 
@@ -42,6 +37,8 @@ impl NodeManager {
       listener,
       address: addr,
       tasks: Arc::new(RwLock::new(HashMap::new())),
+      reader,
+      writer,
     })
   }
 
@@ -92,7 +89,7 @@ impl NodeManager {
         }
 
         // Extract node from registration
-        let node: Node = match registration.message {
+        let mut node: Node = match registration.message {
           NodeToManagerMessage::NodeRegistration(node_reg) => Node::from(node_reg),
           _ => {
             log::error!(
@@ -106,25 +103,17 @@ impl NodeManager {
         let node_id = node.id;
         log::info!("Node {} ({}) registered from {}", node_id, node.name, addr);
 
+        // Attach the TCP stream to the node
+        node.set_stream(socket);
+
         // Send registration acknowledgment
-        let ack = ManagerToNodeMessage::RegistrationAck(RegistrationAck {
-          node_id,
-          accepted: true,
-          message: Some(format!("Node {} successfully registered", node.name)),
-        });
-        log::debug!("Sending registration ACK to node {}: {:#?}", node_id, ack);
-
-        let ack_envelope = MessageEnvelope::new(PROTOCOL_VERSION, ack);
-
-        if let Ok(ack_json) = serde_json::to_string(&ack_envelope) {
-          if let Err(e) = socket.write_all(ack_json.as_bytes()).await {
-            log::error!("Failed to send registration ACK to node {}: {}", node_id, e);
-          } else {
-            log::debug!("Sent registration ACK to node {}", node_id);
-          }
+        if let Err(e) = node.send_registration_ack().await {
+          log::error!("Failed to send registration ACK to node {}: {}", node_id, e);
+          return;
         }
 
-        nodes.write().await.insert(node.id, node);
+        // Insert node into the registry
+        nodes.write().await.insert(node_id, node);
 
         // Spawn task to handle node messages and track it
         let nodes_clone = Arc::clone(&nodes);
@@ -132,27 +121,29 @@ impl NodeManager {
         let handle = tokio::spawn(async move {
           log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
 
-          let mut buf = vec![0u8; 4096];
           loop {
             // Read message from node
-            let n = match socket.read(&mut buf).await {
-              Ok(0) => {
-                log::info!("Node {} disconnected (connection closed)", node_id);
-                break;
-              }
-              Ok(n) => n,
-              Err(e) => {
-                log::error!("Error reading from node {}: {}", node_id, e);
-                break;
-              }
-            };
+            let message = {
+              let mut nodes_guard = nodes_clone.write().await;
+              let node = match nodes_guard.get_mut(&node_id) {
+                Some(n) => n,
+                None => {
+                  log::warn!("Node {} not found in registry", node_id);
+                  break;
+                }
+              };
 
-            // Parse message
-            let message: MessageEnvelope<NodeToManagerMessage> = match serde_json::from_slice(&buf[..n]) {
-              Ok(msg) => msg,
-              Err(e) => {
-                log::error!("Failed to parse message from node {}: {}", node_id, e);
-                continue;
+              match node.read_message().await {
+                Ok(msg) => msg,
+                Err(e) => {
+                  let err_msg = e.to_string();
+                  if err_msg.contains("Connection closed") {
+                    log::info!("Node {} disconnected (connection closed)", node_id);
+                  } else {
+                    log::error!("Error reading from node {}: {}", node_id, e);
+                  }
+                  break;
+                }
               }
             };
 
@@ -164,9 +155,10 @@ impl NodeManager {
                 log::info!("Node {} requested disconnect", node_id);
                 break;
               }
-              _ => {
-                if let Some(node) = nodes_clone.write().await.get_mut(&node_id) {
-                  node.handle_message(message.message, &mut socket).await;
+              msg => {
+                let mut nodes_guard = nodes_clone.write().await;
+                if let Some(node) = nodes_guard.get_mut(&node_id) {
+                  node.handle_message(msg).await;
                 } else {
                   log::warn!("Received message for unknown node: {}", node_id);
                   break;
@@ -176,7 +168,8 @@ impl NodeManager {
           }
 
           // Clean up: remove node from registry
-          if nodes_clone.write().await.remove(&node_id).is_some() {
+          if let Some(mut node) = nodes_clone.write().await.remove(&node_id) {
+            node.disconnect().await;
             log::info!("Removed node {} from registry", node_id);
           }
 
@@ -190,7 +183,76 @@ impl NodeManager {
     }
   }
 
-  pub async fn get_nodes(&self) -> Arc<RwLock<HashMap<u64, Node>>> { Arc::clone(&self.nodes) }
+  /// Get a reference to all registered nodes
+  pub async fn get_nodes(&self) -> Vec<u64> { 
+    self.nodes.read().await.keys().cloned().collect()
+  }
 
-  pub async fn active_connections(&self) -> usize { self.tasks.read().await.len() }
+  /// Get the number of active connections
+  pub async fn active_connections(&self) -> usize { 
+    self.tasks.read().await.len() 
+  }
+
+  /// Get a specific node by ID
+  pub async fn get_node(&self, node_id: u64) -> Option<Node> {
+    self.nodes.read().await.get(&node_id).cloned()
+  }
+
+  /// Remove a node from the registry
+  pub async fn remove_node(&self, node_id: u64) -> Option<Node> {
+    let mut node = self.nodes.write().await.remove(&node_id);
+    if let Some(ref mut n) = node {
+      n.disconnect().await;
+    }
+    
+    // Also remove the task handle
+    if let Some(handle) = self.tasks.write().await.remove(&node_id) {
+      handle.abort();
+    }
+    
+    node
+  }
+
+  /// Get count of registered nodes
+  pub async fn node_count(&self) -> usize {
+    self.nodes.read().await.len()
+  }
+
+  /// Get nodes by status
+  pub async fn get_nodes_by_status(&self, status: bee_message::NodeStatus) -> Vec<Node> {
+    self.nodes
+      .read()
+      .await
+      .values()
+      .filter(|n| n.status == status)
+      .cloned()
+      .collect()
+  }
+
+  /// Broadcast a command to all nodes
+  pub async fn broadcast_command(&self, command: bee_message::ManagerToNodeMessage) {
+    let mut nodes_guard = self.nodes.write().await;
+    for node in nodes_guard.values_mut() {
+      if let Err(e) = node.send(command.clone()).await {
+        log::error!("Failed to send command to node {}: {}", node.id, e);
+      }
+    }
+  }
+
+  /// Send a command to a specific node
+  pub async fn send_command_to_node(
+    &self, 
+    node_id: u64, 
+    command: bee_message::ManagerToNodeMessage
+  ) -> Result<(), String> {
+    let mut nodes_guard = self.nodes.write().await;
+
+    match nodes_guard.get_mut(&node_id) {
+      Some(node) => {
+        node.send(command).await
+          .map_err(|e| format!("Failed to send command: {}", e))
+      }
+      None => Err(format!("Node {} not found", node_id))
+    }
+  }
 }

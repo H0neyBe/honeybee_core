@@ -1,6 +1,7 @@
 [server]
 host = "127.0.0.1"
-port = 9001
+node_port = 9001
+backend_port = 9002
 debug = false
 
 [database]

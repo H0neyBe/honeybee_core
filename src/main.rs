@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
+mod backend_manager;
 mod node_manager;
 mod utils;
 
@@ -11,8 +12,10 @@ use std::{
   env,
   thread,
 };
+use tokio::sync::mpsc;
 
 use bee_config::Config;
+use bee_message::BidirectionalMessage;
 #[cfg(feature = "tracing")]
 use tracy_client::{
   Client,
@@ -50,12 +53,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   log::debug!("Config loaded successfully");
   log::debug!("Loaded config: {:#?}", config);
 
+
   log::debug!(
     "Starting Node Manager On Thread: {}",
     thread::current().name().unwrap_or("main")
   );
-  let node_manager = node_manager::NodeManager::start_node_manager(&config).await?;
+  let (backend_manager_writer, node_manager_reader) = mpsc::unbounded_channel::<BidirectionalMessage>();
+  let (node_manager_writer, backend_manager_reader) = mpsc::unbounded_channel::<BidirectionalMessage>();
+
+  let node_manager = node_manager::NodeManager::build(&config.clone(), node_manager_reader, node_manager_writer).await?;
   let node_manager = std::sync::Arc::new(node_manager);
+
+  let config_clone = config.clone();
+  let node_manager_clone = node_manager.clone();
+  thread::spawn(move || {
+    log::debug!(
+      "Starting Backend Manager On Thread: {}",
+      thread::current().name().unwrap_or("main")
+    );
+    let rt = tokio::runtime::Builder::new_current_thread()
+      .enable_all()
+      .build()
+      .unwrap();
+    rt.block_on(async {
+      let backend_manager = backend_manager::BackendManager::build(&config_clone, backend_manager_reader, backend_manager_writer)
+        .await
+        .unwrap();
+      let _ = backend_manager.listen().await.unwrap();
+    });
+  });
+
 
   // Optional: Spawn monitoring task
   if config.server.debug {
@@ -69,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
           interval.tick().await;
           let active = nm.active_connections().await;
           let nodes = nm.get_nodes().await;
-          let node_count = nodes.read().await.len();
+          let node_count = nodes.len();
           log::info!("Active connections: {}, Registered nodes: {}", active, node_count);
 
           #[cfg(feature = "tracing")]
@@ -82,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
   }
 
-  node_manager.listen().await?;
+  let _ = node_manager.listen().await;
 
   #[cfg(feature = "tracing")]
   frame_mark();
