@@ -19,7 +19,10 @@ use serde::{
   Deserialize,
   Serialize,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{
+  AsyncReadExt,
+  AsyncWriteExt,
+};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
@@ -48,11 +51,11 @@ impl Error for BackendError {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Backend {
-  pub id: u64,
+  pub id:           u64,
   pub backend_type: BackendType,
   #[serde(skip)]
-  pub stream: Option<Arc<Mutex<TcpStream>>>,
-  pub created_at: u64,
+  pub stream:       Option<Arc<Mutex<TcpStream>>>,
+  pub created_at:   u64,
 }
 
 impl Backend {
@@ -72,9 +75,7 @@ impl Backend {
       .as_secs()
   }
 
-  pub fn set_stream(&mut self, stream: TcpStream) {
-    self.stream = Some(Arc::new(Mutex::new(stream)));
-  }
+  pub fn set_stream(&mut self, stream: TcpStream) { self.stream = Some(Arc::new(Mutex::new(stream))); }
 
   pub fn take_stream(&mut self) -> Option<TcpStream> {
     self.stream.take().and_then(|arc_lock| {
@@ -86,7 +87,10 @@ impl Backend {
 
   /// Read a command from the backend's stream
   pub async fn read_command(&mut self) -> Result<MessageEnvelope<BackendToManagerMessage>, Box<dyn Error>> {
-    let stream = self.stream.as_ref().ok_or("No stream available")?;
+    let stream = self
+      .stream
+      .as_ref()
+      .ok_or("No stream available")?;
     let mut locked_stream = stream.lock().await;
 
     let mut buf = vec![0u8; 8192];
@@ -102,7 +106,10 @@ impl Backend {
 
   /// Send a response back to the backend
   pub async fn send_response(&mut self, response: BackendResponse) -> Result<(), Box<dyn Error>> {
-    let stream = self.stream.as_ref().ok_or("No stream available")?;
+    let stream = self
+      .stream
+      .as_ref()
+      .ok_or("No stream available")?;
     let mut locked_stream = stream.lock().await;
 
     let message = ManagerToBackendMessage::BackendResponse(response);
@@ -124,17 +131,12 @@ impl Backend {
 
   /// Send a success response back to the backend
   pub async fn send_success(&mut self, message: Option<String>, data: Option<serde_json::Value>) -> Result<(), Box<dyn Error>> {
-    let response = BackendResponse::Success {
-      message,
-      data,
-    };
+    let response = BackendResponse::Success { message, data };
     self.send_response(response).await
   }
 
   /// Check if the backend's connection is still alive
-  pub fn is_connected(&self) -> bool {
-    self.stream.is_some()
-  }
+  pub fn is_connected(&self) -> bool { self.stream.is_some() }
 
   /// Gracefully disconnect the backend
   pub async fn disconnect(&mut self) {
@@ -151,10 +153,10 @@ impl Backend {
 impl From<BackendCommand> for Backend {
   fn from(cmd: BackendCommand) -> Self {
     Backend {
-      id: rand::random::<u64>(),
+      id:           rand::random::<u64>(),
       backend_type: BackendType::Web,
-      stream: None,
-      created_at: SystemTime::now()
+      stream:       None,
+      created_at:   SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs(),

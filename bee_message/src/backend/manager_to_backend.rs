@@ -19,8 +19,9 @@ pub struct BackendRegistrationAck {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum BackendResponse {
-  Success { message: Option<String>, data: Option<serde_json::Value> },
+  Success {
+    message: Option<String>,
+    data:    Option<serde_json::Value>,
+  },
   Failure(String),
 }
-
-

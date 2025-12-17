@@ -5,24 +5,25 @@ use std::io::{
   BufRead,
   Write,
 };
-use tokio::io::AsyncBufReadExt;
 
 use bee_message::{
+  BackendCommand,
+  BackendRegistration,
+  BackendToManagerMessage,
+  BackendType,
+  InstallPot,
   ManagerToBackendMessage,
   MessageEnvelope,
   NodeCommand,
   NodeCommandType,
-  BackendCommand,
-  BackendToManagerMessage,
-  PotId,
-  InstallPot,
-  BackendType,
-  BackendRegistration,
   PROTOCOL_VERSION,
+  PotId,
 };
-use tokio::io::AsyncWriteExt;
+use tokio::io::{
+  AsyncBufReadExt,
+  AsyncWriteExt,
+};
 use tokio::net::TcpStream;
-
 
 struct HoneybeeCliClient {
   server_address: String,
@@ -43,12 +44,13 @@ impl HoneybeeCliClient {
       port:         0,
       backend_type: BackendType::Cli,
     });
-    self.send(&mut stream, registration_command).await?;
+    self
+      .send(&mut stream, registration_command)
+      .await?;
     // let response = self.receive_response(&mut stream).await?;
     // println!("Registration completed: {:?}", response);
     println!("Registration completed");
-    
-    
+
     Ok(stream)
   }
   async fn send(&self, stream: &mut TcpStream, message: BackendToManagerMessage) -> Result<(), Box<dyn Error>> {
@@ -101,14 +103,22 @@ impl HoneybeeCliClient {
       let command = match parts.get(0) {
         Some(&"list") => BackendCommand::GetNodes,
         Some(&"GetInstalledPots") => BackendCommand::NodeCommand {
-          node_id: parts.get(1).expect("Node ID required").parse().expect("Invalid Node ID"),
+          node_id: parts
+            .get(1)
+            .expect("Node ID required")
+            .parse()
+            .expect("Invalid Node ID"),
           command: NodeCommandType::GetInstalledPots,
         },
         Some(&"DeployPot") => {
           if let Some(pot_id_str) = parts.get(2) {
             match pot_id_str.parse() {
               Ok(pot_id) => BackendCommand::NodeCommand {
-                node_id: parts.get(1).expect("Node ID required").parse().expect("Invalid Node ID"),
+                node_id: parts
+                  .get(1)
+                  .expect("Node ID required")
+                  .parse()
+                  .expect("Invalid Node ID"),
                 command: NodeCommandType::DeployPot(pot_id),
               },
               Err(_) => {

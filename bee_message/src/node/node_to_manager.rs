@@ -54,23 +54,19 @@ pub enum PotStatus {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PotStatusUpdate {
-  pub node_id: u64,
-  pub pot_id: String,
+  pub node_id:  u64,
+  pub pot_id:   String,
   pub pot_type: String,
-  pub status: PotStatus,
-  pub message: Option<String>,
+  pub status:   PotStatus,
+  pub message:  Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PotEvent {
-  pub node_id: u64,
-  pub pot_id: String,
-  pub event: String,
-  pub message: Option<String>,
-  pub metadata: Option<HashMap<String, String>>,
+  pub node_id:   u64,
+  pub pot_id:    String,
+  pub event:     String,
+  pub message:   Option<String>,
+  pub metadata:  Option<HashMap<String, String>>,
   pub timestamp: u64,
 }
-
-
-
-

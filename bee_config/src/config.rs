@@ -17,10 +17,10 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
-  pub host:  String,
-  pub node_port:  u16,
+  pub host:         String,
+  pub node_port:    u16,
   pub backend_port: u16,
-  pub debug: bool,
+  pub debug:        bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,10 +40,10 @@ pub struct LoggingConfig {
 impl Default for ServerConfig {
   fn default() -> Self {
     ServerConfig {
-      host:  "127.0.0.1".to_string(),
-      node_port:  9001,
+      host:         "127.0.0.1".to_string(),
+      node_port:    9001,
       backend_port: 9002,
-      debug: false,
+      debug:        false,
     }
   }
 }

@@ -4,7 +4,14 @@ use std::sync::Arc;
 
 use bee_config::Config;
 use bee_message::{
-  BidirectionalMessage, BackendCommand, BackendToManagerMessage, BackendType, ManagerToBackendMessage, ManagerToNodeMessage, MessageEnvelope, PROTOCOL_VERSION
+  BackendCommand,
+  BackendToManagerMessage,
+  BackendType,
+  BidirectionalMessage,
+  ManagerToBackendMessage,
+  ManagerToNodeMessage,
+  MessageEnvelope,
+  PROTOCOL_VERSION,
 };
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
@@ -18,16 +25,18 @@ use crate::node_manager::NodeManager;
 pub struct BackendManager {
   backends: Arc<RwLock<HashMap<u64, Backend>>>,
   listener: TcpListener,
-  address: SocketAddr,
-  tasks: Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
+  address:  SocketAddr,
+  tasks:    Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
   // channel reader and writer for manager to manager communication
-  reader:  tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
-  writer:  tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
-
+  reader:   tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
+  writer:   tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
 }
 
 impl BackendManager {
-  pub async fn build(config: &Config, reader: tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>, writer: tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>) -> Result<Self, std::io::Error> {
+  pub async fn build(
+    config: &Config, reader: tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
+    writer: tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
+  ) -> Result<Self, std::io::Error> {
     let address = format!("{}:{}", config.server.host, config.server.backend_port);
     let listener = TcpListener::bind(&address).await?;
     let addr = listener.local_addr()?;
@@ -51,8 +60,6 @@ impl BackendManager {
       let backends = Arc::clone(&self.backends);
       let tasks = Arc::clone(&self.tasks);
 
-
-      
       tokio::spawn(async move {
         log::debug!("Got a new backend connection from: {}", addr);
 
@@ -139,17 +146,15 @@ impl BackendManager {
             // Process command and send response
             match command_envelope.message {
               BackendToManagerMessage::BackendCommand(cmd) => {
-                Self::handle_backend_command(
-                  backend_id,
-                  cmd,
-                  &backends_clone,
-                ).await;
+                Self::handle_backend_command(backend_id, cmd, &backends_clone).await;
               }
               _ => {
                 log::warn!("Unexpected message type from backend {}", backend_id);
                 let mut backends_guard = backends_clone.write().await;
                 if let Some(backend) = backends_guard.get_mut(&backend_id) {
-                  let _ = backend.send_error("Unexpected message type".to_string()).await;
+                  let _ = backend
+                    .send_error("Unexpected message type".to_string())
+                    .await;
                 }
               }
             }
@@ -171,13 +176,9 @@ impl BackendManager {
     }
   }
 
-
   /// Handle a command from a backend
   async fn handle_backend_command(
-    &mut self,
-    backend_id: u64,
-    command: BackendCommand,
-    backends: &Arc<RwLock<HashMap<u64, Backend>>>,
+    &mut self, backend_id: u64, command: BackendCommand, backends: &Arc<RwLock<HashMap<u64, Backend>>>,
   ) {
     log::info!("Processing command from backend {}: {:?}", backend_id, command);
 
@@ -194,30 +195,39 @@ impl BackendManager {
       BackendCommand::GetNode { node_id } => {
         // Get specific node
         match node_manager.get_node(node_id).await {
-          Some(node) => {
-            match serde_json::to_value(&node) {
-              Ok(data) => Ok((Some(format!("Retrieved node {}", node_id)), Some(data))),
-              Err(e) => Err(format!("Failed to serialize node: {}", e)),
-            }
-          }
+          Some(node) => match serde_json::to_value(&node) {
+            Ok(data) => Ok((Some(format!("Retrieved node {}", node_id)), Some(data))),
+            Err(e) => Err(format!("Failed to serialize node: {}", e)),
+          },
           None => Err(format!("Node {} not found", node_id)),
         }
       }
       BackendCommand::GetNodesByStatus { status } => {
         // Get nodes by status
-        let nodes = node_manager.get_nodes_by_status(status.clone()).await;
+        let nodes = node_manager
+          .get_nodes_by_status(status.clone())
+          .await;
         match serde_json::to_value(&nodes) {
-          Ok(data) => Ok((Some(format!("Retrieved {} nodes with status {:?}", nodes.len(), status)), Some(data))),
+          Ok(data) => Ok((
+            Some(format!("Retrieved {} nodes with status {:?}", nodes.len(), status)),
+            Some(data),
+          )),
           Err(e) => Err(format!("Failed to serialize nodes: {}", e)),
         }
       }
-      BackendCommand::NodeCommand { node_id, command: node_command } => {
+      BackendCommand::NodeCommand {
+        node_id,
+        command: node_command,
+      } => {
         // Send command to specific node
         let cmd = bee_message::NodeCommand {
           node_id,
           command: node_command,
         };
-        match node_manager.send_command_to_node(node_id, ManagerToNodeMessage::NodeCommand(cmd)).await {
+        match node_manager
+          .send_command_to_node(node_id, ManagerToNodeMessage::NodeCommand(cmd))
+          .await
+        {
           Ok(_) => Ok((Some(format!("Command sent to node {}", node_id)), None)),
           Err(e) => Err(e),
         }
@@ -228,7 +238,9 @@ impl BackendManager {
           node_id: 0, // 0 indicates broadcast
           command: node_command,
         };
-        node_manager.broadcast_command(ManagerToNodeMessage::NodeCommand(cmd)).await;
+        node_manager
+          .broadcast_command(ManagerToNodeMessage::NodeCommand(cmd))
+          .await;
         Ok((Some("Command broadcast to all nodes".to_string()), None))
       }
       BackendCommand::GetNodeCount => {
@@ -276,18 +288,19 @@ impl BackendManager {
   }
 
   /// Get a reference to all registered backends
-  pub async fn get_backends(&self) -> Arc<RwLock<HashMap<u64, Backend>>> {
-    Arc::clone(&self.backends)
-  }
+  pub async fn get_backends(&self) -> Arc<RwLock<HashMap<u64, Backend>>> { Arc::clone(&self.backends) }
 
   /// Get the number of active backend connections
-  pub async fn active_connections(&self) -> usize {
-    self.tasks.read().await.len()
-  }
+  pub async fn active_connections(&self) -> usize { self.tasks.read().await.len() }
 
   /// Get a specific backend by ID
   pub async fn get_backend(&self, backend_id: u64) -> Option<Backend> {
-    self.backends.read().await.get(&backend_id).cloned()
+    self
+      .backends
+      .read()
+      .await
+      .get(&backend_id)
+      .cloned()
   }
 
   /// Remove a backend from the registry
@@ -306,13 +319,12 @@ impl BackendManager {
   }
 
   /// Get count of registered backends
-  pub async fn backend_count(&self) -> usize {
-    self.backends.read().await.len()
-  }
+  pub async fn backend_count(&self) -> usize { self.backends.read().await.len() }
 
   /// Get backends by type
   pub async fn get_backends_by_type(&self, backend_type: BackendType) -> Vec<Backend> {
-    self.backends
+    self
+      .backends
       .read()
       .await
       .values()

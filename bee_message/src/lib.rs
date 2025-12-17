@@ -8,37 +8,33 @@ pub use core::BidirectionalMessage;
 
 pub type PotId = String;
 
+pub use backend::lib::BackendType;
 pub use backend::{
   backend_to_manager,
   manager_to_backend,
-  lib::BackendType,
 };
 pub use backend_to_manager::{
   BackendCommand,
-  BackendToManagerMessage,
   BackendRegistration,
+  BackendToManagerMessage,
 };
-
-pub use manager_to_backend::{
-  ManagerToBackendMessage,
-  BackendRegistrationAck,
-  BackendResponse,
-};
-
-
 pub use common::{
   MessageEnvelope,
   NodeStatus,
   NodeType,
   PROTOCOL_VERSION,
 };
+pub use manager_to_backend::{
+  BackendRegistrationAck,
+  BackendResponse,
+  ManagerToBackendMessage,
+};
 pub use manager_to_node::{
+  InstallPot,
   ManagerToNodeMessage,
   NodeCommand,
-  RegistrationAck,
   NodeCommandType,
-  InstallPot,
-
+  RegistrationAck,
 };
 pub use node::{
   manager_to_node,

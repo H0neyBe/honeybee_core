@@ -4,7 +4,12 @@ use std::sync::Arc;
 
 use bee_config::Config;
 use bee_message::{
-  BackendToManagerMessage, ManagerToBackendMessage, MessageEnvelope, BidirectionalMessage, NodeToManagerMessage, PROTOCOL_VERSION
+  BackendToManagerMessage,
+  BidirectionalMessage,
+  ManagerToBackendMessage,
+  MessageEnvelope,
+  NodeToManagerMessage,
+  PROTOCOL_VERSION,
 };
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
@@ -20,12 +25,15 @@ pub struct NodeManager {
   address:  SocketAddr,
   tasks:    Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
   // channel reader and writer for manager to manager communication
-  reader:  tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
-  writer:  tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
+  reader:   tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
+  writer:   tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
 }
 
 impl NodeManager {
-  pub async fn build(config: &Config, reader: tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>, writer: tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>) -> Result<Self, std::io::Error> {
+  pub async fn build(
+    config: &Config, reader: tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
+    writer: tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
+  ) -> Result<Self, std::io::Error> {
     let address = format!("{}:{}", config.server.host, config.server.node_port);
     let listener = TcpListener::bind(&address).await?;
     let addr = listener.local_addr()?;
@@ -184,19 +192,13 @@ impl NodeManager {
   }
 
   /// Get a reference to all registered nodes
-  pub async fn get_nodes(&self) -> Vec<u64> { 
-    self.nodes.read().await.keys().cloned().collect()
-  }
+  pub async fn get_nodes(&self) -> Vec<u64> { self.nodes.read().await.keys().cloned().collect() }
 
   /// Get the number of active connections
-  pub async fn active_connections(&self) -> usize { 
-    self.tasks.read().await.len() 
-  }
+  pub async fn active_connections(&self) -> usize { self.tasks.read().await.len() }
 
   /// Get a specific node by ID
-  pub async fn get_node(&self, node_id: u64) -> Option<Node> {
-    self.nodes.read().await.get(&node_id).cloned()
-  }
+  pub async fn get_node(&self, node_id: u64) -> Option<Node> { self.nodes.read().await.get(&node_id).cloned() }
 
   /// Remove a node from the registry
   pub async fn remove_node(&self, node_id: u64) -> Option<Node> {
@@ -204,23 +206,22 @@ impl NodeManager {
     if let Some(ref mut n) = node {
       n.disconnect().await;
     }
-    
+
     // Also remove the task handle
     if let Some(handle) = self.tasks.write().await.remove(&node_id) {
       handle.abort();
     }
-    
+
     node
   }
 
   /// Get count of registered nodes
-  pub async fn node_count(&self) -> usize {
-    self.nodes.read().await.len()
-  }
+  pub async fn node_count(&self) -> usize { self.nodes.read().await.len() }
 
   /// Get nodes by status
   pub async fn get_nodes_by_status(&self, status: bee_message::NodeStatus) -> Vec<Node> {
-    self.nodes
+    self
+      .nodes
       .read()
       .await
       .values()
@@ -240,19 +241,15 @@ impl NodeManager {
   }
 
   /// Send a command to a specific node
-  pub async fn send_command_to_node(
-    &self, 
-    node_id: u64, 
-    command: bee_message::ManagerToNodeMessage
-  ) -> Result<(), String> {
+  pub async fn send_command_to_node(&self, node_id: u64, command: bee_message::ManagerToNodeMessage) -> Result<(), String> {
     let mut nodes_guard = self.nodes.write().await;
 
     match nodes_guard.get_mut(&node_id) {
-      Some(node) => {
-        node.send(command).await
-          .map_err(|e| format!("Failed to send command: {}", e))
-      }
-      None => Err(format!("Node {} not found", node_id))
+      Some(node) => node
+        .send(command)
+        .await
+        .map_err(|e| format!("Failed to send command: {}", e)),
+      None => Err(format!("Node {} not found", node_id)),
     }
   }
 }

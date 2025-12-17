@@ -45,14 +45,10 @@ pub enum NodeCommandType {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstallPot {
-  pub pot_id: PotId,
+  pub pot_id:        PotId,
   pub honeypot_type: String,
-  pub git_url: Option<String>,
-  pub git_branch: Option<String>,
-  pub config: Option<HashMap<String, String>>,
-  pub auto_start: bool,
+  pub git_url:       Option<String>,
+  pub git_branch:    Option<String>,
+  pub config:        Option<HashMap<String, String>>,
+  pub auto_start:    bool,
 }
-
-
-
-

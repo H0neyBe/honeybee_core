@@ -4,9 +4,9 @@ use serde::{
 };
 
 use crate::backend::lib::BackendType;
+use crate::common::NodeStatus;
 // use crate::PotId;
 use crate::node::manager_to_node::NodeCommandType;
-use crate::common::NodeStatus;
 
 /// Messages sent from Backend → Manager
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

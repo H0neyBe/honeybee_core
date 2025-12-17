@@ -12,10 +12,10 @@ use std::{
   env,
   thread,
 };
-use tokio::sync::mpsc;
 
 use bee_config::Config;
 use bee_message::BidirectionalMessage;
+use tokio::sync::mpsc;
 #[cfg(feature = "tracing")]
 use tracy_client::{
   Client,
@@ -53,7 +53,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   log::debug!("Config loaded successfully");
   log::debug!("Loaded config: {:#?}", config);
 
-
   log::debug!(
     "Starting Node Manager On Thread: {}",
     thread::current().name().unwrap_or("main")
@@ -82,7 +81,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
       let _ = backend_manager.listen().await.unwrap();
     });
   });
-
 
   // Optional: Spawn monitoring task
   if config.server.debug {
