@@ -7,6 +7,7 @@ use bee_message::{
   BackendToManagerMessage,
   BidirectionalMessage,
   ManagerToBackendMessage,
+  ManagerToNodeMessage,
   MessageEnvelope,
   NodeToManagerMessage,
   PROTOCOL_VERSION,
@@ -24,7 +25,6 @@ pub struct NodeManager {
   listener: TcpListener,
   address:  SocketAddr,
   tasks:    Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
-  // channel reader and writer for manager to manager communication
   reader:   tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
   writer:   tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
 }
@@ -130,84 +130,56 @@ impl NodeManager {
           log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
 
           loop {
-            // Read message from node
-            let message = {
-              let mut nodes_guard = nodes_clone.write().await;
-              let node = match nodes_guard.get_mut(&node_id) {
-                Some(n) => n,
-                None => {
-                  log::warn!("Node {} not found in registry", node_id);
-                  break;
-                }
-              };
-
-              match node.read_message().await {
-                Ok(msg) => msg,
-                Err(e) => {
-                  let err_msg = e.to_string();
-                  if err_msg.contains("Connection closed") {
-                    log::info!("Node {} disconnected (connection closed)", node_id);
-                  } else {
-                    log::error!("Error reading from node {}: {}", node_id, e);
-                  }
-                  break;
-                }
+            // Read message from node without holding the lock
+            let message_result = {
+              // why the fuck did you do a write here instead of a read
+              let nodes_lock = nodes_clone.read().await;
+              if let Some(node) = nodes_lock.get(&node_id) {
+                node.read_message().await
+              } else {
+                log::warn!("Node {} not found in registry", node_id);
+                break;
               }
             };
 
-            log::debug!("Received message from node {}: {:?}", node_id, message.message);
-
-            // Handle message
-            match message.message {
-              NodeToManagerMessage::NodeDrop => {
-                log::info!("Node {} requested disconnect", node_id);
-                break;
+            match message_result {
+              Ok(envelope) => {
+                log::debug!("Received message from node {}: {:?}", node_id, envelope);
+                // Handle the message here
               }
-              msg => {
-                let mut nodes_guard = nodes_clone.write().await;
-                if let Some(node) = nodes_guard.get_mut(&node_id) {
-                  node.handle_message(msg).await;
-                } else {
-                  log::warn!("Received message for unknown node: {}", node_id);
-                  break;
-                }
+              Err(e) => {
+                log::error!("Error reading from node {}: {}", node_id, e);
+                break;
               }
             }
           }
 
-          // Clean up: remove node from registry
-          if let Some(mut node) = nodes_clone.write().await.remove(&node_id) {
-            node.disconnect().await;
-            log::info!("Removed node {} from registry", node_id);
-          }
-
-          // Remove task handle
+          // Cleanup when node disconnects
+          log::info!("Node {} disconnected, cleaning up", node_id);
+          nodes_clone.write().await.remove(&node_id);
           tasks_clone.write().await.remove(&node_id);
         });
 
-        // Store task handle
         tasks.write().await.insert(node_id, handle);
       });
     }
   }
 
-  /// Get a reference to all registered nodes
-  pub async fn get_nodes(&self) -> Vec<u64> { self.nodes.read().await.keys().cloned().collect() }
+  // Public API methods that don't block
+  pub async fn get_nodes(&self) -> Vec<u64> {
+    log::debug!("Getting list of registered nodes");
+    self.nodes.read().await.keys().copied().collect()
+  }
 
-  /// Get the number of active connections
-  pub async fn active_connections(&self) -> usize { self.tasks.read().await.len() }
-
-  /// Get a specific node by ID
   pub async fn get_node(&self, node_id: u64) -> Option<Node> { self.nodes.read().await.get(&node_id).cloned() }
 
-  /// Remove a node from the registry
-  pub async fn remove_node(&self, node_id: u64) -> Option<Node> {
-    let mut node = self.nodes.write().await.remove(&node_id);
-    if let Some(ref mut n) = node {
-      n.disconnect().await;
-    }
+  pub async fn node_count(&self) -> usize { self.nodes.read().await.len() }
 
-    // Also remove the task handle
+  pub async fn active_connections(&self) -> usize { self.tasks.read().await.len() }
+
+  pub async fn remove_node(&self, node_id: u64) -> Option<Node> {
+    let node = self.nodes.write().await.remove(&node_id);
+
     if let Some(handle) = self.tasks.write().await.remove(&node_id) {
       handle.abort();
     }
@@ -215,41 +187,34 @@ impl NodeManager {
     node
   }
 
-  /// Get count of registered nodes
-  pub async fn node_count(&self) -> usize { self.nodes.read().await.len() }
+  pub async fn send_command_to_node(&self, node_id: u64, command: ManagerToNodeMessage) -> Result<(), String> {
+    let mut nodes = self.nodes.write().await;
 
-  /// Get nodes by status
-  pub async fn get_nodes_by_status(&self, status: bee_message::NodeStatus) -> Vec<Node> {
-    self
-      .nodes
-      .read()
-      .await
-      .values()
-      .filter(|n| n.status == status)
-      .cloned()
-      .collect()
+    if let Some(node) = nodes.get_mut(&node_id) {
+      node.send_message(command).await
+    } else {
+      Err(format!("Node {} not found", node_id))
+    }
   }
 
-  /// Broadcast a command to all nodes
-  pub async fn broadcast_command(&self, command: bee_message::ManagerToNodeMessage) {
-    let mut nodes_guard = self.nodes.write().await;
-    for node in nodes_guard.values_mut() {
-      if let Err(e) = node.send(command.clone()).await {
-        log::error!("Failed to send command to node {}: {}", node.id, e);
+  pub async fn broadcast_command(&self, command: ManagerToNodeMessage) {
+    let mut nodes = self.nodes.write().await;
+
+    for (node_id, node) in nodes.iter_mut() {
+      if let Err(e) = node.send_message(command.clone()).await {
+        log::error!("Failed to send command to node {}: {}", node_id, e);
       }
     }
   }
 
-  /// Send a command to a specific node
-  pub async fn send_command_to_node(&self, node_id: u64, command: bee_message::ManagerToNodeMessage) -> Result<(), String> {
-    let mut nodes_guard = self.nodes.write().await;
-
-    match nodes_guard.get_mut(&node_id) {
-      Some(node) => node
-        .send(command)
-        .await
-        .map_err(|e| format!("Failed to send command: {}", e)),
-      None => Err(format!("Node {} not found", node_id)),
-    }
+  pub async fn get_nodes_by_status(&self, status: bee_message::NodeStatus) -> Vec<u64> {
+    self
+      .nodes
+      .read()
+      .await
+      .iter()
+      .filter(|(_, node)| node.status == status)
+      .map(|(id, _)| *id)
+      .collect()
   }
 }

@@ -7,14 +7,17 @@ mod node_manager;
 mod utils;
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{
   env,
   thread,
 };
 
+use backend_manager::BackendManager;
 use bee_config::Config;
 use bee_message::BidirectionalMessage;
+use node_manager::NodeManager;
 use tokio::sync::mpsc;
 #[cfg(feature = "tracing")]
 use tracy_client::{
@@ -60,26 +63,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let (backend_manager_writer, node_manager_reader) = mpsc::unbounded_channel::<BidirectionalMessage>();
   let (node_manager_writer, backend_manager_reader) = mpsc::unbounded_channel::<BidirectionalMessage>();
 
-  let node_manager = node_manager::NodeManager::build(&config.clone(), node_manager_reader, node_manager_writer).await?;
-  let node_manager = std::sync::Arc::new(node_manager);
+  let node_manager = NodeManager::build(&config, node_manager_reader, backend_manager_writer).await?;
+  let node_manager = Arc::new(node_manager);
 
-  let config_clone = config.clone();
-  let node_manager_clone = node_manager.clone();
-  thread::spawn(move || {
-    log::debug!(
-      "Starting Backend Manager On Thread: {}",
-      thread::current().name().unwrap_or("main")
-    );
-    let rt = tokio::runtime::Builder::new_current_thread()
-      .enable_all()
-      .build()
-      .unwrap();
-    rt.block_on(async {
-      let backend_manager = backend_manager::BackendManager::build(&config_clone, backend_manager_reader, backend_manager_writer)
-        .await
-        .unwrap();
-      let _ = backend_manager.listen().await.unwrap();
-    });
+  // Pass node_manager reference to backend_manager
+  let backend_manager = BackendManager::build(
+    &config,
+    backend_manager_reader,
+    node_manager_writer,
+    Arc::clone(&node_manager), // Pass NodeManager reference
+  )
+  .await?;
+
+  let node_manager_clone = Arc::clone(&node_manager);
+  tokio::spawn(async move {
+    if let Err(e) = backend_manager.listen().await {
+      log::error!("Backend manager error: {}", e);
+    }
   });
 
   // Optional: Spawn monitoring task
@@ -108,9 +108,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   }
 
   let _ = node_manager.listen().await;
-
-  #[cfg(feature = "tracing")]
-  frame_mark();
 
   Ok(())
 }

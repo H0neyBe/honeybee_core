@@ -1,10 +1,4 @@
-use std::error::Error;
-use std::fmt;
 use std::sync::Arc;
-use std::time::{
-  SystemTime,
-  UNIX_EPOCH,
-};
 
 use bee_message::{
   ManagerToNodeMessage,
@@ -12,9 +6,7 @@ use bee_message::{
   NodeRegistration,
   NodeStatus,
   NodeToManagerMessage,
-  NodeType,
   PROTOCOL_VERSION,
-  RegistrationAck,
 };
 use serde::{
   Deserialize,
@@ -25,182 +17,97 @@ use tokio::io::{
   AsyncWriteExt,
 };
 use tokio::net::TcpStream;
-use tokio::sync::{
-  Mutex,
-  RwLock,
-};
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum HoneypotError {
-  DeploymentFailed(String),
-  NodeNotFound(String),
-  CommandFailed(String),
-  DataCollectionFailed(String),
-  InvalidConfiguration(String),
-}
-
-impl fmt::Display for HoneypotError {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      HoneypotError::DeploymentFailed(msg) => write!(f, "Deployment failed: {}", msg),
-      HoneypotError::NodeNotFound(msg) => write!(f, "Node not found: {}", msg),
-      HoneypotError::CommandFailed(msg) => write!(f, "Command failed: {}", msg),
-      HoneypotError::DataCollectionFailed(msg) => write!(f, "Data collection failed: {}", msg),
-      HoneypotError::InvalidConfiguration(msg) => write!(f, "Invalid configuration: {}", msg),
-    }
-  }
-}
-
-impl Error for HoneypotError {}
+use tokio::sync::Mutex;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
   pub id:         u64,
   pub name:       String,
-  #[serde(skip)]
-  pub stream:     Option<Arc<Mutex<TcpStream>>>,
-  pub config:     NodeConfig,
   pub status:     NodeStatus,
-  pub created_at: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct NodeConfig {
-  pub address:   String,
-  pub port:      u16,
-  pub node_type: NodeType,
+  #[serde(skip)]
+  pub tcp_writer: Option<Arc<Mutex<tokio::net::tcp::OwnedWriteHalf>>>,
+  #[serde(skip)]
+  pub tcp_reader: Option<Arc<Mutex<tokio::net::tcp::OwnedReadHalf>>>,
 }
 
 impl Node {
-  pub fn new(id: u64, name: String, config: NodeConfig, stream: TcpStream) -> Self {
+  pub fn new(id: u64, name: String) -> Self {
     Node {
       id,
       name,
-      config,
-      status: NodeStatus::Unknown,
-      created_at: Self::current_timestamp(),
-      stream: Some(Arc::new(Mutex::new(stream))),
+      status: NodeStatus::Connected,
+      tcp_writer: None,
+      tcp_reader: None,
     }
   }
 
-  fn current_timestamp() -> u64 {
-    SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_secs()
+  pub fn set_stream(&mut self, stream: TcpStream) {
+    let (read_half, write_half) = stream.into_split();
+    self.tcp_writer = Some(Arc::new(Mutex::new(write_half)));
+    self.tcp_reader = Some(Arc::new(Mutex::new(read_half)));
   }
 
-  pub fn update_status(&mut self, status: NodeStatus) { self.status = status; }
-
-  pub fn set_stream(&mut self, stream: TcpStream) { self.stream = Some(Arc::new(Mutex::new(stream))); }
-
-  pub fn take_stream(&mut self) -> Option<TcpStream> {
-    self.stream.take().and_then(|arc_lock| {
-      Arc::try_unwrap(arc_lock)
-        .ok()
-        .map(|rw_lock| rw_lock.into_inner())
-    })
-  }
-
-  /// Send registration acknowledgment to the node
-  pub async fn send_registration_ack(&mut self) -> Result<(), Box<dyn Error>> {
-    let stream = self
-      .stream
-      .as_mut()
-      .ok_or("No stream available")?;
-
-    let ack = ManagerToNodeMessage::RegistrationAck(RegistrationAck {
+  pub async fn send_registration_ack(&mut self) -> Result<(), String> {
+    let ack = ManagerToNodeMessage::RegistrationAck(bee_message::RegistrationAck {
       node_id:  self.id,
       accepted: true,
-      message:  Some(format!("Node {} successfully registered", self.name)),
+      message:  Some(String::from("Registration successful")),
     });
+    log::debug!("Sending registration ack to node {}: {:?}", self.id, ack);
+    self.send_message(ack).await
+  }
 
-    log::debug!("Sending registration ACK to node {}: {:#?}", self.id, ack);
+  pub async fn send_message(&mut self, message: ManagerToNodeMessage) -> Result<(), String> {
+    let writer = self
+      .tcp_writer
+      .as_ref()
+      .ok_or("No writer available")?;
+    let mut locked_writer = writer.lock().await;
 
-    self
-      .send(ManagerToNodeMessage::RegistrationAck(RegistrationAck {
-        node_id:  self.id,
-        accepted: true,
-        message:  Some(format!("Node {} successfully registered", self.name)),
-      }))
-      .await?;
-    log::debug!("Sent registration ACK to node {}", self.id);
+    let envelope = MessageEnvelope::new(PROTOCOL_VERSION, message);
+    let json = serde_json::to_string(&envelope).map_err(|e| e.to_string())? + "\n";
+    let data = json.as_bytes();
+
+    locked_writer
+      .write_all(data)
+      .await
+      .map_err(|e| e.to_string())?;
+    locked_writer
+      .flush()
+      .await
+      .map_err(|e| e.to_string())?;
+
     Ok(())
   }
 
-  /// Read a message from the node's stream
-  pub async fn read_message(&mut self) -> Result<MessageEnvelope<NodeToManagerMessage>, Box<dyn Error>> {
-    let stream = self
-      .stream
-      .as_mut()
-      .ok_or("No stream available")?;
+  pub async fn read_message(&self) -> Result<MessageEnvelope<NodeToManagerMessage>, String> {
+    let reader = self
+      .tcp_reader
+      .as_ref()
+      .ok_or("No reader available")?;
+    let mut locked_reader = reader.lock().await;
 
     let mut buf = vec![0u8; 4096];
-    let n = stream.lock().await.read(&mut buf).await?;
+    let n = locked_reader
+      .read(&mut buf)
+      .await
+      .map_err(|e| e.to_string())?;
 
     if n == 0 {
-      return Err("Connection closed".into());
+      return Err("Connection closed".to_string());
     }
 
-    let message: MessageEnvelope<NodeToManagerMessage> = serde_json::from_slice(&buf[..n])?;
-    Ok(message)
+    let msg = String::from_utf8_lossy(&buf[..n]);
+    serde_json::from_str(&msg).map_err(|e| e.to_string())
   }
 
-  /// Handle incoming messages from the node
-  pub async fn handle_message(&mut self, message: NodeToManagerMessage) {
-    log::debug!("Handling message for node: {}", self.id);
-    match message {
-      NodeToManagerMessage::NodeStatusUpdate(status) => {
-        log::debug!("Received status update for node {}: {:?}", self.id, status.status);
-        self.status = status.status;
-      }
-      NodeToManagerMessage::NodeEvent(event) => {
-        log::debug!("Received event from node {}: {:?}", self.id, event);
-      }
-      NodeToManagerMessage::NodeDrop => {
-        log::info!("Node {} requested disconnect", self.id);
-        self.status = NodeStatus::Stopped;
-      }
-      _ => {
-        log::warn!("Unhandled message type for node {}: {:?}", self.id, message);
-      }
-    }
-  }
-
-  /// Send a command to the node
-  pub async fn send(&mut self, command: ManagerToNodeMessage) -> Result<(), Box<dyn Error>> {
-    let stream = self
-      .stream
-      .as_ref()
-      .ok_or("No stream available")?
-      .clone();
-    let node_id = self.id;
-
-    let envelope = MessageEnvelope::new(PROTOCOL_VERSION, command);
-    let json = serde_json::to_string(&envelope)? + "\n";
-
-    tokio::spawn(async move {
-      let mut locked_stream = stream.lock().await;
-      if let Err(e) = locked_stream.write_all(json.as_bytes()).await {
-        log::error!("Failed to send command to node {}: {}", node_id, e);
-      }
-      if let Err(e) = locked_stream.flush().await {
-        log::error!("Failed to flush stream for node {}: {}", node_id, e);
-      }
-    });
-
-    Ok(())
-  }
-
-  /// Check if the node's connection is still alive
-  pub fn is_connected(&self) -> bool { self.stream.is_some() }
-
-  /// Gracefully disconnect the node
   pub async fn disconnect(&mut self) {
-    if let Some(stream) = self.stream.take() {
+    if let Some(writer) = self.tcp_writer.take() {
       log::debug!("Disconnecting node {}", self.id);
-      let mut locked_stream = stream.lock().await;
-      let _ = locked_stream.shutdown().await;
+      if let Ok(writer) = Arc::try_unwrap(writer) {
+        let mut locked_writer = writer.into_inner();
+        let _ = locked_writer.shutdown().await;
+      }
     }
     self.status = NodeStatus::Stopped;
   }
@@ -208,22 +115,12 @@ impl Node {
 
 impl From<NodeRegistration> for Node {
   fn from(reg: NodeRegistration) -> Self {
-    let config = NodeConfig {
-      address:   reg.address,
-      port:      reg.port,
-      node_type: reg.node_type,
-    };
-
     Node {
-      id: reg.node_id,
-      name: reg.node_name,
-      config,
-      status: NodeStatus::Deploying,
-      created_at: SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs(),
-      stream: None,
+      id:         reg.node_id,
+      name:       reg.node_name,
+      status:     NodeStatus::Connected,
+      tcp_writer: None,
+      tcp_reader: None,
     }
   }
 }

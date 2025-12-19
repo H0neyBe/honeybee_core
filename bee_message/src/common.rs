@@ -12,6 +12,7 @@ pub enum NodeType {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NodeStatus {
+  Connected,
   Deploying,
   Running,
   Stopped,
