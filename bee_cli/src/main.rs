@@ -1,4 +1,4 @@
-// /home/hqnw/Desktop/project_4/code/honeybee_core/bee_cli/src/main.rs
+#![allow(dead_code, unused_imports, unused_variables)]
 use std::error::Error;
 use std::io::{
   self,
@@ -38,17 +38,14 @@ impl HoneybeeCliClient {
     println!("Connected successfully!");
     println!("Starting registration process...");
     let registration_command = BackendToManagerMessage::BackendRegistration(BackendRegistration {
-      backend_id:   1,
       backend_name: "Honeybee CLI Client".to_string(),
-      address:      "<address>".to_string(),
-      port:         0,
       backend_type: BackendType::Cli,
     });
     self
       .send(&mut stream, registration_command)
       .await?;
-    // let response = self.receive_response(&mut stream).await?;
-    // println!("Registration completed: {:?}", response);
+    let response = self.receive_response(&mut stream).await?;
+    println!("Registration completed: {:?}", response);
     println!("Registration completed");
 
     Ok(stream)

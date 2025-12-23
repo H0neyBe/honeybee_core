@@ -18,10 +18,7 @@ pub enum BackendToManagerMessage {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BackendRegistration {
-  pub backend_id:   u64,
   pub backend_name: String,
-  pub address:      String,
-  pub port:         u16,
   pub backend_type: BackendType,
 }
 
