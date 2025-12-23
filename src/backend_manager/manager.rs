@@ -18,6 +18,7 @@ use bee_message::{
 };
 use tokio::io::{
   AsyncBufReadExt,
+  AsyncReadExt,
   AsyncWriteExt,
   BufReader,
 };
@@ -69,17 +70,65 @@ impl BackendManager {
 
     loop {
       let (stream, addr) = self.listener.accept().await?;
+      log::debug!("New backend connection from: {}", addr);
+
       let backends = Arc::clone(&self.backends);
       let tasks = Arc::clone(&self.tasks);
       let node_manager = Arc::clone(&self.node_manager);
-
-      log::debug!("New backend connection from: {}", addr);
 
       tokio::spawn(async move {
         if let Err(e) = Self::handle_backend_connection(stream, backends, tasks, node_manager).await {
           log::error!("Backend connection error from {}: {}", addr, e);
         }
       });
+    }
+  }
+
+  async fn read_json_message<R: AsyncReadExt + Unpin>(reader: &mut R) -> Result<String, String> {
+    let mut buffer = Vec::new();
+    let mut temp = [0u8; 1];
+    let mut brace_count = 0;
+    let mut in_string = false;
+    let mut escape_next = false;
+    let mut started = false;
+
+    loop {
+      match reader.read(&mut temp).await {
+        Ok(0) => return Err("EOF while reading JSON message".to_string()),
+        Ok(_) => {
+          let byte = temp[0];
+          buffer.push(byte);
+
+          if !started && byte == b'{' {
+            started = true;
+            brace_count = 1;
+            continue;
+          }
+
+          if !started {
+            continue;
+          }
+
+          if escape_next {
+            escape_next = false;
+            continue;
+          }
+
+          match byte {
+            b'\\' if in_string => escape_next = true,
+            b'"' => in_string = !in_string,
+            b'{' if !in_string => brace_count += 1,
+            b'}' if !in_string => {
+              brace_count -= 1;
+              if brace_count == 0 {
+                return String::from_utf8(buffer).map_err(|e| e.to_string());
+              }
+            }
+            _ => {}
+          }
+        }
+        Err(e) => return Err(e.to_string()),
+      }
     }
   }
 
@@ -90,16 +139,13 @@ impl BackendManager {
     log::info!("New TCP backend connection established");
 
     // Split the stream into read and write halves
-    let (read_half, write_half) = stream.into_split();
+    let (mut read_half, write_half) = stream.into_split();
     let write_half = Arc::new(Mutex::new(write_half));
-    let mut reader = BufReader::new(read_half);
-    let mut buffer = String::new();
 
     // Wait for initial registration message
-    reader
-      .read_line(&mut buffer)
-      .await
-      .map_err(|e| e.to_string())?;
+    let buffer = Self::read_json_message(&mut read_half).await?;
+
+    log::debug!("Received registration message: {}", buffer.trim());
 
     let backend_id = Self::handle_registration(&buffer).await?;
     log::info!("Backend {} registered successfully", backend_id);
@@ -127,36 +173,45 @@ impl BackendManager {
 
     // Handle messages from this backend
     loop {
-      buffer.clear();
-
       // Read the next command
-      match reader.read_line(&mut buffer).await {
-        Ok(0) => {
-          log::info!("Backend {} disconnected (EOF)", backend_id);
-          break;
-        }
-        Ok(_) => {
+      match Self::read_json_message(&mut read_half).await {
+        Ok(buffer) => {
           let envelope: Result<MessageEnvelope<BackendToManagerMessage>, _> = serde_json::from_str(buffer.trim());
 
           match envelope {
             Ok(env) => {
               log::debug!("Received command from backend {}: {:?}", backend_id, env.message);
 
-              let response = Self::handle_backend_message(env.message, backend_id, &backends, &node_manager).await;
+              let response = Self::handle_backend_message_static(env.message, backend_id, &node_manager).await;
+
+              log::debug!("Sending response to backend {}: {:?}", backend_id, response);
 
               // Send response without locking the backends HashMap
               let response_envelope = MessageEnvelope::new(PROTOCOL_VERSION, ManagerToBackendMessage::BackendResponse(response));
+
+              // NOTE: NEVER FORGET TO ADD NEWLINE AT THE END OF THE MESSAGE YOU STUPID FUCK
               let response_json = serde_json::to_string(&response_envelope).map_err(|e| e.to_string())? + "\n";
 
+              log::debug!("Serialized response JSON for backend {}: {}", backend_id, response_json);
+
               let mut writer = write_half.lock().await;
-              if let Err(e) = writer.write_all(response_json.as_bytes()).await {
+              log::debug!("Acquired lock to send response to backend {}", backend_id);
+
+              let bytes = response_json.as_bytes();
+              log::debug!("Writing {} bytes to backend {}", bytes.len(), backend_id);
+
+              if let Err(e) = writer.write_all(bytes).await {
                 log::error!("Error sending response to backend {}: {}", backend_id, e);
                 break;
               }
+
+              log::debug!("Flushing writer for backend {}", backend_id);
               if let Err(e) = writer.flush().await {
                 log::error!("Error flushing response to backend {}: {}", backend_id, e);
                 break;
               }
+
+              log::debug!("Response successfully sent and flushed to backend {}", backend_id);
             }
             Err(e) => {
               log::error!("Failed to parse message from backend {}: {}", backend_id, e);
@@ -164,7 +219,11 @@ impl BackendManager {
           }
         }
         Err(e) => {
-          log::error!("Error reading from backend {}: {}", backend_id, e);
+          if e.contains("EOF") {
+            log::info!("Backend {} disconnected (EOF)", backend_id);
+          } else {
+            log::error!("Error reading from backend {}: {}", backend_id, e);
+          }
           break;
         }
       }
@@ -190,21 +249,18 @@ impl BackendManager {
     }
 
     match envelope.message {
-      BackendToManagerMessage::BackendRegistration(reg) => Ok(reg.backend_id),
+      BackendToManagerMessage::BackendRegistration(reg) => Ok(rand::random::<u64>()),
       _ => Err("Expected BackendRegistration message".to_string()),
     }
   }
 
-  async fn handle_backend_message(
-    message: BackendToManagerMessage, backend_id: u64, backends: &Arc<RwLock<HashMap<u64, Backend>>>,
-    node_manager: &Arc<NodeManager>,
+  async fn handle_backend_message_static(
+    message: BackendToManagerMessage, backend_id: u64, node_manager: &NodeManager,
   ) -> BackendResponse {
     log::debug!("Processing command from backend {}: {:?}", backend_id, message);
 
     match message {
-      BackendToManagerMessage::BackendCommand(cmd) => {
-        Self::process_backend_command(backend_id, cmd, backends, node_manager).await
-      }
+      BackendToManagerMessage::BackendCommand(cmd) => Self::process_backend_command_static(backend_id, cmd, node_manager).await,
       BackendToManagerMessage::BackendDrop => {
         log::info!("Backend {} requested disconnect", backend_id);
         BackendResponse::Success {
@@ -216,8 +272,8 @@ impl BackendManager {
     }
   }
 
-  async fn process_backend_command(
-    backend_id: u64, command: BackendCommand, backends: &Arc<RwLock<HashMap<u64, Backend>>>, node_manager: &Arc<NodeManager>,
+  async fn process_backend_command_static(
+    backend_id: u64, command: BackendCommand, node_manager: &NodeManager,
   ) -> BackendResponse {
     log::info!("Processing command from backend {}: {:?}", backend_id, command);
 
@@ -225,6 +281,7 @@ impl BackendManager {
       BackendCommand::GetNodes => {
         let node_ids = node_manager.get_nodes().await;
         log::debug!("Retrieved {} nodes", node_ids.len());
+        log::debug!("Node Ids: {:?}", node_ids);
 
         BackendResponse::Success {
           message: Some(format!("Retrieved {} nodes", node_ids.len())),

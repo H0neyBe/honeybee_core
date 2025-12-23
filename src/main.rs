@@ -15,6 +15,7 @@ use std::{
 };
 
 use backend_manager::BackendManager;
+use bee_comb::proxy::WebSocketProxy;
 use bee_config::Config;
 use bee_message::BidirectionalMessage;
 use node_manager::NodeManager;
@@ -27,7 +28,6 @@ use tracy_client::{
 };
 use utils::logger;
 
-// Enable Tracy's global allocator for memory tracking
 #[cfg(feature = "tracing")]
 #[global_allocator]
 static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
@@ -66,14 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let node_manager = NodeManager::build(&config, node_manager_reader, backend_manager_writer).await?;
   let node_manager = Arc::new(node_manager);
 
-  // Pass node_manager reference to backend_manager
-  let backend_manager = BackendManager::build(
-    &config,
-    backend_manager_reader,
-    node_manager_writer,
-    Arc::clone(&node_manager), // Pass NodeManager reference
-  )
-  .await?;
+  let backend_manager =
+    BackendManager::build(&config, backend_manager_reader, node_manager_writer, Arc::clone(&node_manager)).await?;
 
   let node_manager_clone = Arc::clone(&node_manager);
   tokio::spawn(async move {
@@ -82,32 +76,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
   });
 
-  // Optional: Spawn monitoring task
+  // Start WebSocket proxy if enabled
+  if config.proxy.enabled {
+    let proxy_socket = std::net::SocketAddr::from(config.proxy.clone());
+    let backend_socket = format!("{}:{}", config.server.host, config.server.backend_port);
+
+    tokio::spawn(async move {
+      log::info!("Starting WebSocket Proxy at {}", proxy_socket);
+      let proxy = WebSocketProxy::new(proxy_socket, backend_socket.clone());
+      if let Err(e) = proxy.run(proxy_socket).await {
+        log::error!("WebSocket Proxy error: {}", e);
+      }
+    });
+  }
+
+  // Start monitoring task if debug mode is enabled
   if config.server.debug {
     log::info!("Starting monitoring task");
     let node_manager_clone = node_manager.clone();
-    let monitor_handle = {
-      let nm = node_manager_clone.clone();
-      tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
-        loop {
-          interval.tick().await;
-          let active = nm.active_connections().await;
-          let nodes = nm.get_nodes().await;
-          let node_count = nodes.len();
-          log::info!("Active connections: {}, Registered nodes: {}", active, node_count);
-
-          #[cfg(feature = "tracing")]
-          {
-            tracy_client::plot!("monitor.active_connections", active as f64);
-            tracy_client::plot!("monitor.registered_nodes", node_count as f64);
-          }
-        }
-      })
-    };
+    tokio::spawn(async move {
+      let mut interval = tokio::time::interval(Duration::from_secs(10));
+      loop {
+        interval.tick().await;
+        let active = node_manager_clone.active_connections().await;
+        let nodes = node_manager_clone.get_nodes().await;
+        let node_count = nodes.len();
+        log::info!("Status: {} active connections, {} registered nodes", active, node_count);
+      }
+    });
   }
 
-  let _ = node_manager.listen().await;
+  // Start the node manager listener
+  if let Err(e) = node_manager.listen().await {
+    log::error!("Node manager error: {}", e);
+    return Err(e.into());
+  }
 
   Ok(())
 }
