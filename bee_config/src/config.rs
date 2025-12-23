@@ -9,9 +9,9 @@ use serde::{
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-  pub server:   ServerConfig,
-  pub database: DatabaseConfig,
-  pub logging:  LoggingConfig,
+  pub server:  ServerConfig,
+  pub logging: LoggingConfig,
+  pub proxy:   ProxyConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,16 +25,28 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct DatabaseConfig {
-  pub url:             String,
-  pub max_connections: u32,
+pub struct LoggingConfig {
+  pub level:       String,
+  pub folder:      Option<String>,
+  pub force_color: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-pub struct LoggingConfig {
-  pub level:  String,
-  pub folder: Option<String>,
+pub struct ProxyConfig {
+  pub enabled: bool,
+  pub host:    String,
+  pub port:    u16,
+}
+
+impl Default for ProxyConfig {
+  fn default() -> Self {
+    ProxyConfig {
+      enabled: false,
+      host:    "127.0.0.1".to_string(),
+      port:    9003,
+    }
+  }
 }
 
 impl Default for ServerConfig {
@@ -50,26 +62,26 @@ impl Default for ServerConfig {
 
 impl From<ServerConfig> for std::net::SocketAddr {
   fn from(config: ServerConfig) -> Self {
-    format!("{}:{} | {}", config.host, config.node_port, config.backend_port)
+    format!("{}:{}", config.host, config.node_port)
       .parse()
       .unwrap()
   }
 }
 
-impl Default for DatabaseConfig {
-  fn default() -> Self {
-    DatabaseConfig {
-      url:             "postgres://localhost/mydb".to_string(),
-      max_connections: 10,
-    }
+impl From<ProxyConfig> for std::net::SocketAddr {
+  fn from(config: ProxyConfig) -> Self {
+    format!("{}:{}", config.host, config.port)
+      .parse()
+      .unwrap()
   }
 }
 
 impl Default for LoggingConfig {
   fn default() -> Self {
     LoggingConfig {
-      level:  "info".to_string(),
-      folder: None,
+      level:       "info".to_string(),
+      folder:      None,
+      force_color: false,
     }
   }
 }

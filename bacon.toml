@@ -129,6 +129,7 @@ watch = [
     "bee_config.toml",
     "bee_config",
     "bee_message",
+    "bee_comb",
 ]
 need_stdout = true
 allow_warnings = true

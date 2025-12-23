@@ -4,9 +4,12 @@ node_port = 9001
 backend_port = 9002
 debug = false
 
-[database]
-url = "postgres://localhost/mydb"
-
 [logging]
 level = "debug"
 folder = "logs"
+force_color = true
+
+[proxy]
+enabled = true
+host = "0.0.0.0"
+port = 9003
