@@ -1,32 +1,26 @@
-# Stage 1: Build the Rust application
-FROM rust:alpine as builder
+# Stage 1: Build with latest Rust nightly
+FROM alpine:3.19 AS builder
 
-# Install dependencies
-RUN apk add --no-cache musl-dev
+# Install build dependencies
+RUN apk add --no-cache curl gcc musl-dev pkgconfig openssl-dev openssl-libs-static
 
-# Set the working directory in the container
+# Install rustup and nightly toolchain
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 WORKDIR /app
-
-# Copy the current directory contents into the container at /app
 COPY . .
-
-# Build the Rust application
 RUN cargo build --release
 
-# Stage 2: Create a smaller image with the compiled binary
-FROM alpine:latest
-
-# Install necessary runtime dependencies
-RUN apk add --no-cache libgcc libstdc++
-
-# Set the working directory in the container
+# Stage 2: Runtime
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates netcat-openbsd
 WORKDIR /app
-
-# Copy the compiled binary from the builder stage
+RUN mkdir -p /app/logs
 COPY --from=builder /app/target/release/honeybee_core /app/honeybee_core
-
-# Make ports 9001 available to the world outside this container
-EXPOSE 9001
-
-# Run the compiled binary
+# Copy config file (will be overridden by volume mount in docker-compose if needed)
+COPY --from=builder /app/bee_config.toml /app/bee_config.toml
+EXPOSE 9001 9002 9003
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD nc -z localhost 9001 || exit 1
 CMD ["./honeybee_core"]
