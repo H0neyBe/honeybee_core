@@ -53,6 +53,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
   }
 
+  // Initialize MongoDB logger if enabled
+  if config.logging.mongodb && !config.database.mongodb_uri.is_empty() {
+    match utils::mongo_logger::init_mongo_logger(
+      &config.database.mongodb_uri,
+      &config.database.database,
+      &config.database.collection,
+    )
+    .await
+    {
+      Ok(_) => log::info!("MongoDB logger initialized successfully"),
+      Err(e) => {
+        log::error!("Failed to initialize MongoDB logger: {}", e);
+        eprintln!("Failed to initialize MongoDB logger: {}", e);
+      }
+    }
+  }
+
   log::debug!("Config loaded successfully");
   log::debug!("Loaded config: {:#?}", config);
 

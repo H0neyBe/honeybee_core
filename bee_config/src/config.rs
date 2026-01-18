@@ -9,9 +9,10 @@ use serde::{
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-  pub server:  ServerConfig,
-  pub logging: LoggingConfig,
-  pub proxy:   ProxyConfig,
+  pub server:   ServerConfig,
+  pub logging:  LoggingConfig,
+  pub proxy:    ProxyConfig,
+  pub database: DatabaseConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +30,15 @@ pub struct LoggingConfig {
   pub level:       String,
   pub folder:      Option<String>,
   pub force_color: bool,
+  pub mongodb:     bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DatabaseConfig {
+  pub mongodb_uri: String,
+  pub database:    String,
+  pub collection:  String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +92,17 @@ impl Default for LoggingConfig {
       level:       "info".to_string(),
       folder:      None,
       force_color: false,
+      mongodb:     false,
+    }
+  }
+}
+
+impl Default for DatabaseConfig {
+  fn default() -> Self {
+    DatabaseConfig {
+      mongodb_uri: String::new(),
+      database:    "honeybee".to_string(),
+      collection:  "logs".to_string(),
     }
   }
 }

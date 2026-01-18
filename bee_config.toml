@@ -8,6 +8,12 @@ debug = false
 level = "debug"
 folder = "logs"
 force_color = true
+mongodb = true
+
+[database]
+mongodb_uri = ""
+database = "honeybee"
+collection = "logs"
 
 [proxy]
 enabled = true

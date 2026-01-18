@@ -4,6 +4,8 @@ use std::thread;
 use bee_config::Config;
 use colored::Colorize;
 
+use super::mongo_logger;
+
 pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
   let log_level: log::LevelFilter = config.logging.level.parse().unwrap();
 
@@ -12,8 +14,9 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
   }
 
   // Console output with colors
+  let mongodb_enabled = config.logging.mongodb;
   let console_dispatch = fern::Dispatch::new()
-    .format(|out, message, record| {
+    .format(move |out, message, record| {
       let level_colored = match record.level() {
         log::Level::Error => record.level().to_string().red().bold(),
         log::Level::Warn => record.level().to_string().yellow().bold(),
@@ -42,6 +45,16 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
       } else {
         record.target().to_string()
       };
+
+      // Log to MongoDB if enabled
+      if mongodb_enabled {
+        mongo_logger::log_to_mongo(
+          record.level(),
+          record.target(),
+          record.line(),
+          message.to_string(),
+        );
+      }
 
       #[cfg(debug_assertions)]
       out.finish(format_args!(
