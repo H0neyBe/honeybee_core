@@ -125,6 +125,11 @@ impl NodeManager {
         }
 
         // Extract node from registration
+        let node_name = match &registration.message {
+          NodeToManagerMessage::NodeRegistration(node_reg) => node_reg.node_name.clone(),
+          _ => String::from("unknown"),
+        };
+
         let mut node: Node = match registration.message {
           NodeToManagerMessage::NodeRegistration(node_reg) => Node::from(node_reg),
           _ => {
@@ -152,7 +157,7 @@ impl NodeManager {
         nodes.write().await.insert(node_id, node);
         let _ = node_event_tx.send(NodeEventUpdate {
           node_id,
-          node_name: Some(registration.node_name.clone()),
+          node_name: Some(node_name),
           status: Some(NodeStatus::Connected),
           event: "connected".to_string(),
         });

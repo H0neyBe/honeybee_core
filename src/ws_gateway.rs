@@ -14,7 +14,7 @@ use tokio::sync::{broadcast, mpsc};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::backend_manager::manager::BackendManager;
+use crate::backend_manager::BackendManager;
 use crate::node_manager::NodeManager;
 use bee_config::Config;
 use bee_message::{

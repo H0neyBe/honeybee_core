@@ -113,10 +113,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start WebSocket gateway if enabled
   if config.proxy.enabled {
     let proxy_socket = std::net::SocketAddr::from(config.proxy.clone());
+    let node_manager_ws = Arc::clone(&node_manager);
+    let config_ws = Arc::clone(&config);
 
     tokio::spawn(async move {
-        log::info!("Starting WebSocket Gateway at {}", proxy_socket);
-      let gateway = WsGateway::new(proxy_socket, Arc::clone(&node_manager), Arc::clone(&config));
+      log::info!("Starting WebSocket Gateway at {}", proxy_socket);
+      let gateway = WsGateway::new(proxy_socket, Arc::clone(&node_manager_ws), Arc::clone(&config_ws));
       if let Err(e) = gateway.run().await {
         log::error!("WebSocket Gateway error: {}", e);
       }
