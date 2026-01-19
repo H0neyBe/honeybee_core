@@ -13,8 +13,10 @@ use serde::{
   Serialize,
 };
 use tokio::io::{
+  AsyncBufReadExt,
   AsyncReadExt,
   AsyncWriteExt,
+  BufReader,
 };
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -27,7 +29,7 @@ pub struct Node {
   #[serde(skip)]
   pub tcp_writer: Option<Arc<Mutex<tokio::net::tcp::OwnedWriteHalf>>>,
   #[serde(skip)]
-  pub tcp_reader: Option<Arc<Mutex<tokio::net::tcp::OwnedReadHalf>>>,
+  pub tcp_reader: Option<Arc<Mutex<BufReader<tokio::net::tcp::OwnedReadHalf>>>>,
 }
 
 impl Node {
@@ -44,7 +46,7 @@ impl Node {
   pub fn set_stream(&mut self, stream: TcpStream) {
     let (read_half, write_half) = stream.into_split();
     self.tcp_writer = Some(Arc::new(Mutex::new(write_half)));
-    self.tcp_reader = Some(Arc::new(Mutex::new(read_half)));
+    self.tcp_reader = Some(Arc::new(Mutex::new(BufReader::new(read_half))));
   }
 
   pub async fn send_registration_ack(&mut self) -> Result<(), String> {
@@ -57,7 +59,7 @@ impl Node {
     self.send_message(ack).await
   }
 
-  pub async fn send_message(&mut self, message: ManagerToNodeMessage) -> Result<(), String> {
+  pub async fn send_message(&self, message: ManagerToNodeMessage) -> Result<(), String> {
     let writer = self
       .tcp_writer
       .as_ref()
@@ -87,9 +89,9 @@ impl Node {
       .ok_or("No reader available")?;
     let mut locked_reader = reader.lock().await;
 
-    let mut buf = vec![0u8; 4096];
+    let mut line = String::new();
     let n = locked_reader
-      .read(&mut buf)
+      .read_line(&mut line)
       .await
       .map_err(|e| e.to_string())?;
 
@@ -97,8 +99,7 @@ impl Node {
       return Err("Connection closed".to_string());
     }
 
-    let msg = String::from_utf8_lossy(&buf[..n]);
-    serde_json::from_str(&msg).map_err(|e| e.to_string())
+    serde_json::from_str(line.trim()).map_err(|e| format!("Failed to parse message: {}", e))
   }
 
   pub async fn disconnect(&mut self) {

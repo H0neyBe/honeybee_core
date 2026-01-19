@@ -21,7 +21,7 @@ use bee_message::{
   Unit,
 };
 use rustyline::error::ReadlineError;
-use rustyline::{DefaultEditor, Result as RustylineResult};
+use rustyline::{DefaultEditor, Result as RustylineResult, Config};
 use tokio::io::{
   AsyncBufReadExt,
   AsyncWriteExt,
@@ -115,8 +115,11 @@ impl HoneybeeCliClient {
   async fn run(&self) -> Result<(), Box<dyn Error>> {
     let mut stream = self.connect().await?;
 
-    // Create rustyline editor for interactive input with history
-    let mut rl = DefaultEditor::new()?;
+    // Create rustyline editor with config to disable bracketed paste
+    let config = Config::builder()
+      .bracketed_paste(false)
+      .build();
+    let mut rl = DefaultEditor::with_config(config)?;
     
     // Try to load history from file
     let history_file = "honeybee_cli_history.txt";

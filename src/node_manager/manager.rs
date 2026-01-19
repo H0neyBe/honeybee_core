@@ -238,9 +238,9 @@ impl NodeManager {
       self.response_channels.write().await.insert(node_id, sender);
     }
     
-    let mut nodes = self.nodes.write().await;
+    let nodes = self.nodes.read().await;
 
-    if let Some(node) = nodes.get_mut(&node_id) {
+    if let Some(node) = nodes.get(&node_id) {
       node.send_message(command).await
     } else {
       Err(format!("Node {} not found", node_id))
@@ -248,9 +248,9 @@ impl NodeManager {
   }
 
   pub async fn broadcast_command(&self, command: ManagerToNodeMessage) {
-    let mut nodes = self.nodes.write().await;
+    let nodes = self.nodes.read().await;
 
-    for (node_id, node) in nodes.iter_mut() {
+    for (node_id, node) in nodes.iter() {
       if let Err(e) = node.send_message(command.clone()).await {
         log::error!("Failed to send command to node {}: {}", node_id, e);
       }
