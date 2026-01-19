@@ -20,6 +20,8 @@ use bee_message::{
   PotId,
   Unit,
 };
+use rustyline::error::ReadlineError;
+use rustyline::{DefaultEditor, Result as RustylineResult};
 use tokio::io::{
   AsyncBufReadExt,
   AsyncWriteExt,
@@ -113,15 +115,38 @@ impl HoneybeeCliClient {
   async fn run(&self) -> Result<(), Box<dyn Error>> {
     let mut stream = self.connect().await?;
 
-    let stdin = io::stdin();
+    // Create rustyline editor for interactive input with history
+    let mut rl = DefaultEditor::new()?;
+    
+    // Try to load history from file
+    let history_file = "honeybee_cli_history.txt";
+    let _ = rl.load_history(history_file);
 
-    for line in stdin.lock().lines() {
-      let line = line?;
-      let parts: Vec<&str> = line.trim().split_whitespace().collect();
-      if parts.is_empty() {
-        continue;
-      }
-      let command = match parts.get(0) {
+    println!("\n🐝 HoneyBee CLI - Type 'help' for commands, Ctrl+C to exit\n");
+
+    loop {
+      let readline = rl.readline("honeybee> ");
+      match readline {
+        Ok(line) => {
+          if line.trim().is_empty() {
+            continue;
+          }
+          
+          // Add to history
+          let _ = rl.add_history_entry(line.as_str());
+          
+          let parts: Vec<&str> = line.trim().split_whitespace().collect();
+          if parts.is_empty() {
+            continue;
+          }
+          
+          // Handle exit commands
+          if matches!(parts[0], "exit" | "quit") {
+            println!("👋 Goodbye!");
+            break;
+          }
+          
+          let command = match parts.get(0) {
         Some(&"list") => BackendCommand::GetNodes,
         Some(&"GetInstalledPots") => BackendCommand::NodeCommand {
           node_id: parts
@@ -267,6 +292,13 @@ impl HoneybeeCliClient {
           println!("  RestartPot <node_id> <pot_id>          - Restart a honeypot");
           println!("  GetPotStatus <node_id> <pot_id>        - Get honeypot status");
           println!();
+          println!("Navigation:");
+          println!("  ↑/↓ arrows                              - Navigate command history");
+          println!("  Ctrl+A / Home                           - Go to beginning of line");
+          println!("  Ctrl+E / End                            - Go to end of line");
+          println!("  Ctrl+C                                  - Exit CLI");
+          println!("  exit / quit                             - Exit CLI");
+          println!();
           println!("Available honeypot types:");
           println!("  cowrie       - SSH/Telnet honeypot");
           println!("  honnypotter  - WordPress login honeypot");
@@ -285,6 +317,25 @@ impl HoneybeeCliClient {
         }
       };
       self.send_command(&mut stream, command).await?;
+        }
+        Err(ReadlineError::Interrupted) => {
+          println!("\n👋 Goodbye!");
+          break;
+        }
+        Err(ReadlineError::Eof) => {
+          println!("\n👋 Goodbye!");
+          break;
+        }
+        Err(err) => {
+          eprintln!("Error reading input: {}", err);
+          break;
+        }
+      }
+    }
+
+    // Save history before exiting
+    if let Err(e) = rl.save_history(history_file) {
+      eprintln!("Warning: Failed to save command history: {}", e);
     }
 
     Ok(())
