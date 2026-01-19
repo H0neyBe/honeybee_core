@@ -123,7 +123,7 @@ impl HoneybeeCliClient {
             }
           };
           
-          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          let pot_id: PotId = parts.get(2).unwrap().to_string();
           let honeypot_type = parts.get(3).unwrap().to_string();
           
           BackendCommand::NodeCommand {
@@ -154,7 +154,7 @@ impl HoneybeeCliClient {
             }
           };
           
-          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          let pot_id: PotId = parts.get(2).unwrap().to_string();
           
           BackendCommand::NodeCommand {
             node_id,
@@ -177,7 +177,7 @@ impl HoneybeeCliClient {
             }
           };
           
-          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          let pot_id: PotId = parts.get(2).unwrap().to_string();
           
           BackendCommand::NodeCommand {
             node_id,
@@ -200,7 +200,7 @@ impl HoneybeeCliClient {
             }
           };
           
-          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          let pot_id: PotId = parts.get(2).unwrap().to_string();
           
           BackendCommand::NodeCommand {
             node_id,
@@ -223,7 +223,7 @@ impl HoneybeeCliClient {
             }
           };
           
-          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          let pot_id: PotId = parts.get(2).unwrap().to_string();
           
           BackendCommand::NodeCommand {
             node_id,
