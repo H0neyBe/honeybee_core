@@ -6,6 +6,7 @@ use std::io::{
   Write,
 };
 
+use chrono::Local;
 use bee_message::{
   BackendCommand,
   BackendRegistration,
@@ -80,21 +81,57 @@ impl HoneybeeCliClient {
   }
   
   fn display_response(&self, response: ManagerToBackendMessage) {
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
     match response {
       ManagerToBackendMessage::BackendResponse(backend_response) => {
         match backend_response {
           bee_message::BackendResponse::Success { message, data } => {
-            println!("\n✅ Success");
+            println!("\n✅ Success [{}]", timestamp);
             if let Some(msg) = message {
               println!("   {}", msg);
             }
             if let Some(data_val) = data {
-              println!("   Data: {}", serde_json::to_string_pretty(&data_val).unwrap_or_else(|_| format!("{:?}", data_val)));
+              // Try to parse the response field if it exists
+              if let Some(response_str) = data_val.get("response").and_then(|v| v.as_str()) {
+                // Parse common response patterns
+                if response_str.starts_with("Alarm { description:") {
+                  // Extract the description from Alarm
+                  if let Some(desc_start) = response_str.find("description: \"") {
+                    if let Some(desc_end) = response_str[desc_start..].find("\" }") {
+                      let description = &response_str[desc_start + 14..desc_start + desc_end];
+                      println!("   📢 {}", description);
+                    }
+                  }
+                } else if response_str.starts_with("Error { message:") {
+                  // Extract the message from Error
+                  if let Some(msg_start) = response_str.find("message: \"") {
+                    if let Some(msg_end) = response_str[msg_start..].find("\" }") {
+                      let error_message = &response_str[msg_start + 10..msg_start + msg_end];
+                      println!("   ⚠️  {}", error_message);
+                    }
+                  }
+                } else {
+                  // Show raw response if pattern doesn't match
+                  println!("   Response: {}", response_str);
+                }
+                
+                // Show other data fields if present
+                let mut other_data = data_val.clone();
+                if let Some(obj) = other_data.as_object_mut() {
+                  obj.remove("response");
+                  if !obj.is_empty() {
+                    println!("   Details: {}", serde_json::to_string_pretty(&other_data).unwrap_or_default());
+                  }
+                }
+              } else {
+                // Display full data if no response field
+                println!("   {}", serde_json::to_string_pretty(&data_val).unwrap_or_else(|_| format!("{:?}", data_val)));
+              }
             }
             println!();
           }
           bee_message::BackendResponse::Failure(error_msg) => {
-            println!("\n❌ Error: {}\n", error_msg);
+            println!("\n❌ Error [{}]: {}\n", timestamp, error_msg);
           }
         }
       }
