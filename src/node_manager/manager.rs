@@ -145,7 +145,29 @@ impl NodeManager {
             match message_result {
               Ok(envelope) => {
                 log::debug!("Received message from node {}: {:?}", node_id, envelope);
-                // Handle the message here
+                
+                // Handle different message types
+                match envelope.message {
+                  NodeToManagerMessage::PotLog(pot_log) => {
+                    log::debug!("Received honeypot log from node {}: {:?}", node_id, pot_log);
+                    // Forward to MongoDB honeypot logger
+                    tokio::spawn(async move {
+                      crate::utils::honeypot_logger::log_honeypot_event(pot_log).await;
+                    });
+                  }
+                  NodeToManagerMessage::PotStatusUpdate(status_update) => {
+                    log::info!("Pot status update from node {}: {:?}", node_id, status_update);
+                  }
+                  NodeToManagerMessage::NodeStatusUpdate(status_update) => {
+                    log::info!("Node status update: {:?}", status_update);
+                  }
+                  NodeToManagerMessage::NodeEvent(event) => {
+                    log::info!("Node event from {}: {:?}", node_id, event);
+                  }
+                  _ => {
+                    log::debug!("Unhandled message type from node {}", node_id);
+                  }
+                }
               }
               Err(e) => {
                 log::error!("Error reading from node {}: {}", node_id, e);

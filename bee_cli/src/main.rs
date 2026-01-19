@@ -107,6 +107,35 @@ impl HoneybeeCliClient {
             .expect("Invalid Node ID"),
           command: NodeCommandType::GetInstalledPots,
         },
+        Some(&"InstallPot") => {
+          // InstallPot <node_id> <pot_id> <honeypot_type>
+          if parts.len() < 4 {
+            println!("Usage: InstallPot <node_id> <pot_id> <honeypot_type>");
+            println!("Example: InstallPot 1 cowrie-01 cowrie");
+            continue;
+          }
+          
+          let node_id = match parts.get(1).unwrap().parse() {
+            Ok(id) => id,
+            Err(_) => {
+              println!("Invalid Node ID");
+              continue;
+            }
+          };
+          
+          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          let honeypot_type = parts.get(3).unwrap().to_string();
+          
+          BackendCommand::NodeCommand {
+            node_id,
+            command: NodeCommandType::InstallPot(InstallPot {
+              pot_id,
+              honeypot_type,
+              config: std::collections::HashMap::new(),
+              auto_start: true,
+            }),
+          }
+        }
         Some(&"DeployPot") => {
           if let Some(pot_id_str) = parts.get(2) {
             match pot_id_str.parse() {
@@ -130,6 +159,11 @@ impl HoneybeeCliClient {
         }
         _ => {
           println!("Unknown command or insufficient arguments");
+          println!("\nAvailable commands:");
+          println!("  list                              - List all connected nodes");
+          println!("  GetInstalledPots <node_id>        - Get installed honeypots on a node");
+          println!("  InstallPot <node_id> <pot_id> <type> - Install a honeypot");
+          println!("  DeployPot <node_id> <pot_id>      - Deploy/start a honeypot");
           continue;
         }
       };

@@ -1,5 +1,5 @@
 [server]
-host = "127.0.0.1"
+host = "0.0.0.0"
 node_port = 9001
 backend_port = 9002
 debug = false
@@ -11,9 +11,11 @@ force_color = true
 mongodb = true
 
 [database]
-mongodb_uri = ""
+mongodb_uri = "mongodb+srv://H0neyBe:H0neyBe@honeybee-logs.cssoiny.mongodb.net/?appName=Honeybee-Logs"
 database = "honeybee"
 collection = "logs"
+honeypot_database = "honeybee_honeypots"
+honeypot_collection = "pot_logs"
 
 [proxy]
 enabled = true

@@ -68,6 +68,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Failed to initialize MongoDB logger: {}", e);
       }
     }
+
+    // Initialize Honeypot logger (separate database)
+    match utils::honeypot_logger::init_honeypot_logger(
+      &config.database.mongodb_uri,
+      &config.database.honeypot_database,
+      &config.database.honeypot_collection,
+    )
+    .await
+    {
+      Ok(_) => log::info!("Honeypot MongoDB logger initialized successfully"),
+      Err(e) => {
+        log::error!("Failed to initialize honeypot MongoDB logger: {}", e);
+        eprintln!("Failed to initialize honeypot MongoDB logger: {}", e);
+      }
+    }
   }
 
   log::debug!("Config loaded successfully");

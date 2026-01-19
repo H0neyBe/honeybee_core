@@ -19,6 +19,7 @@ pub enum NodeToManagerMessage {
   NodeEvent(NodeEvent),
   NodeDrop,
   PotStatusUpdate(PotStatusUpdate),
+  PotLog(PotLog),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -69,4 +70,14 @@ pub struct PotEvent {
   pub message:   Option<String>,
   pub metadata:  Option<HashMap<String, String>>,
   pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PotLog {
+  pub node_id:   u64,
+  pub pot_id:    String,
+  pub pot_type:  String,
+  pub log_type:  String,
+  pub data:      HashMap<String, serde_json::Value>,
+  pub timestamp: String,
 }

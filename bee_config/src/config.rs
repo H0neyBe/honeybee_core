@@ -36,9 +36,11 @@ pub struct LoggingConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DatabaseConfig {
-  pub mongodb_uri: String,
-  pub database:    String,
-  pub collection:  String,
+  pub mongodb_uri:        String,
+  pub database:           String,
+  pub collection:         String,
+  pub honeypot_database:  String,
+  pub honeypot_collection: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,9 +102,11 @@ impl Default for LoggingConfig {
 impl Default for DatabaseConfig {
   fn default() -> Self {
     DatabaseConfig {
-      mongodb_uri: String::new(),
-      database:    "honeybee".to_string(),
-      collection:  "logs".to_string(),
+      mongodb_uri:         String::new(),
+      database:            "honeybee".to_string(),
+      collection:          "logs".to_string(),
+      honeypot_database:   "honeybee_honeypots".to_string(),
+      honeypot_collection: "pot_logs".to_string(),
     }
   }
 }
