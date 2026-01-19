@@ -233,7 +233,9 @@ async fn handle_request(
         Some(node_id) => {
           let node = state.node_manager.get_node(node_id).await;
           let data = node.map(|n| serde_json::json!({"node": n}));
-          WsOutgoing::Response { id, ok: data.is_some(), data, error: if data.is_none() { Some("Node not found".to_string()) } else { None } }
+          let ok = data.is_some();
+          let error = if ok { None } else { Some("Node not found".to_string()) };
+          WsOutgoing::Response { id, ok, data, error }
         }
         None => WsOutgoing::Response { id, ok: false, data: None, error: Some("node_id is required".to_string()) },
       }
