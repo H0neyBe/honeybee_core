@@ -40,7 +40,7 @@ pub use node::{
   manager_to_node,
   node_to_manager,
 };
-pub use node_to_manager::
+pub use node_to_manager::{
   NodeEvent,
   NodeRegistration,
   NodeStatusUpdate,
