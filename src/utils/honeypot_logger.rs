@@ -123,6 +123,16 @@ fn normalize_pot_log_data(mut data: Document) -> NormalizedPotLogData {
   promote_field(&mut data, &mut top_level, "protocol");
   promote_field(&mut data, &mut top_level, "version");
   promote_field(&mut data, &mut top_level, "hassh");
+  promote_field(&mut data, &mut top_level, "kex");
+  promote_field(&mut data, &mut top_level, "kex_alg");
+  promote_field(&mut data, &mut top_level, "key_alg");
+  promote_field(&mut data, &mut top_level, "cipher_in");
+  promote_field(&mut data, &mut top_level, "mac_in");
+  promote_field(&mut data, &mut top_level, "comp_in");
+  promote_field(&mut data, &mut top_level, "cipher_out");
+  promote_field(&mut data, &mut top_level, "mac_out");
+  promote_field(&mut data, &mut top_level, "comp_out");
+  promote_field(&mut data, &mut top_level, "service");
   promote_field(&mut data, &mut top_level, "duration");
   promote_field(&mut data, &mut top_level, "uuid");
   promote_field(&mut data, &mut top_level, "sensor");
