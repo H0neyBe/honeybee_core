@@ -111,7 +111,7 @@ impl HoneybeeCliClient {
           // InstallPot <node_id> <pot_id> <honeypot_type>
           if parts.len() < 4 {
             println!("Usage: InstallPot <node_id> <pot_id> <honeypot_type>");
-            println!("Example: InstallPot 1 cowrie-01 cowrie");
+            println!("Example: InstallPot 8108114413124017714 cowrie-01 cowrie");
             continue;
           }
           
@@ -131,39 +131,132 @@ impl HoneybeeCliClient {
             command: NodeCommandType::InstallPot(InstallPot {
               pot_id,
               honeypot_type,
-              config: std::collections::HashMap::new(),
+              git_url: None,
+              git_branch: None,
+              config: None,
               auto_start: true,
             }),
           }
         }
         Some(&"DeployPot") => {
-          if let Some(pot_id_str) = parts.get(2) {
-            match pot_id_str.parse() {
-              Ok(pot_id) => BackendCommand::NodeCommand {
-                node_id: parts
-                  .get(1)
-                  .expect("Node ID required")
-                  .parse()
-                  .expect("Invalid Node ID"),
-                command: NodeCommandType::DeployPot(pot_id),
-              },
-              Err(_) => {
-                println!("Invalid Pot ID: {}", pot_id_str);
-                continue;
-              }
-            }
-          } else {
-            println!("Pot ID required for DeployPot command");
+          // DeployPot <node_id> <pot_id>
+          if parts.len() < 3 {
+            println!("Usage: DeployPot <node_id> <pot_id>");
+            println!("Example: DeployPot 8108114413124017714 cowrie-01");
             continue;
           }
+          
+          let node_id = match parts.get(1).unwrap().parse() {
+            Ok(id) => id,
+            Err(_) => {
+              println!("Invalid Node ID");
+              continue;
+            }
+          };
+          
+          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          
+          BackendCommand::NodeCommand {
+            node_id,
+            command: NodeCommandType::DeployPot(pot_id),
+          }
+        }
+        Some(&"StopPot") => {
+          // StopPot <node_id> <pot_id>
+          if parts.len() < 3 {
+            println!("Usage: StopPot <node_id> <pot_id>");
+            println!("Example: StopPot 8108114413124017714 cowrie-01");
+            continue;
+          }
+          
+          let node_id = match parts.get(1).unwrap().parse() {
+            Ok(id) => id,
+            Err(_) => {
+              println!("Invalid Node ID");
+              continue;
+            }
+          };
+          
+          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          
+          BackendCommand::NodeCommand {
+            node_id,
+            command: NodeCommandType::StopPot(pot_id),
+          }
+        }
+        Some(&"RestartPot") => {
+          // RestartPot <node_id> <pot_id>
+          if parts.len() < 3 {
+            println!("Usage: RestartPot <node_id> <pot_id>");
+            println!("Example: RestartPot 8108114413124017714 cowrie-01");
+            continue;
+          }
+          
+          let node_id = match parts.get(1).unwrap().parse() {
+            Ok(id) => id,
+            Err(_) => {
+              println!("Invalid Node ID");
+              continue;
+            }
+          };
+          
+          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          
+          BackendCommand::NodeCommand {
+            node_id,
+            command: NodeCommandType::RestartPot(pot_id),
+          }
+        }
+        Some(&"GetPotStatus") => {
+          // GetPotStatus <node_id> <pot_id>
+          if parts.len() < 3 {
+            println!("Usage: GetPotStatus <node_id> <pot_id>");
+            println!("Example: GetPotStatus 8108114413124017714 cowrie-01");
+            continue;
+          }
+          
+          let node_id = match parts.get(1).unwrap().parse() {
+            Ok(id) => id,
+            Err(_) => {
+              println!("Invalid Node ID");
+              continue;
+            }
+          };
+          
+          let pot_id = PotId(parts.get(2).unwrap().to_string());
+          
+          BackendCommand::NodeCommand {
+            node_id,
+            command: NodeCommandType::GetPotStatus(pot_id),
+          }
+        }
+        Some(&"help") | Some(&"?") => {
+          println!("\n=== HoneyBee CLI Commands ===\n");
+          println!("Node Management:");
+          println!("  list                                    - List all connected nodes");
+          println!("  GetInstalledPots <node_id>              - Get installed honeypots on a node");
+          println!();
+          println!("Honeypot Management:");
+          println!("  InstallPot <node_id> <pot_id> <type>   - Install a honeypot");
+          println!("  DeployPot <node_id> <pot_id>           - Deploy/start a honeypot");
+          println!("  StopPot <node_id> <pot_id>             - Stop a running honeypot");
+          println!("  RestartPot <node_id> <pot_id>          - Restart a honeypot");
+          println!("  GetPotStatus <node_id> <pot_id>        - Get honeypot status");
+          println!();
+          println!("Available honeypot types:");
+          println!("  cowrie       - SSH/Telnet honeypot");
+          println!("  honnypotter  - WordPress login honeypot");
+          println!();
+          println!("Examples:");
+          println!("  list");
+          println!("  InstallPot 8108114413124017714 cowrie-01 cowrie");
+          println!("  DeployPot 8108114413124017714 cowrie-01");
+          println!("  GetInstalledPots 8108114413124017714");
+          println!("  StopPot 8108114413124017714 cowrie-01\n");
+          continue;
         }
         _ => {
-          println!("Unknown command or insufficient arguments");
-          println!("\nAvailable commands:");
-          println!("  list                              - List all connected nodes");
-          println!("  GetInstalledPots <node_id>        - Get installed honeypots on a node");
-          println!("  InstallPot <node_id> <pot_id> <type> - Install a honeypot");
-          println!("  DeployPot <node_id> <pot_id>      - Deploy/start a honeypot");
+          println!("Unknown command. Type 'help' for available commands.");
           continue;
         }
       };

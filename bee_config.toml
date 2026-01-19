@@ -11,7 +11,7 @@ force_color = true
 mongodb = true
 
 [database]
-mongodb_uri = "mongodb+srv://H0neyBe:H0neyBe@honeybee-logs.cssoiny.mongodb.net/?appName=Honeybee-Logs"
+mongodb_uri = ""
 database = "honeybee"
 collection = "logs"
 honeypot_database = "honeybee_honeypots"
