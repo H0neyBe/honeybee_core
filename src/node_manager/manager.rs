@@ -15,18 +15,20 @@ use bee_message::{
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use super::node::Node;
 
 #[derive(Debug)]
 pub struct NodeManager {
-  nodes:    Arc<RwLock<HashMap<u64, Node>>>,
-  listener: TcpListener,
-  address:  SocketAddr,
-  tasks:    Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
-  reader:   tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
-  writer:   tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
+  nodes:             Arc<RwLock<HashMap<u64, Node>>>,
+  listener:          TcpListener,
+  address:           SocketAddr,
+  tasks:             Arc<RwLock<HashMap<u64, JoinHandle<()>>>>,
+  reader:            tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
+  writer:            tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
+  response_channels: Arc<RwLock<HashMap<u64, oneshot::Sender<String>>>>,
 }
 
 impl NodeManager {
@@ -41,12 +43,13 @@ impl NodeManager {
     log::info!("Node Manager listening on: {}", addr);
 
     Ok(NodeManager {
-      nodes: Arc::new(RwLock::new(HashMap::new())),
+      nodes:             Arc::new(RwLock::new(HashMap::new())),
       listener,
-      address: addr,
-      tasks: Arc::new(RwLock::new(HashMap::new())),
+      address:           addr,
+      tasks:             Arc::new(RwLock::new(HashMap::new())),
       reader,
       writer,
+      response_channels: Arc::new(RwLock::new(HashMap::new())),
     })
   }
 
@@ -56,6 +59,7 @@ impl NodeManager {
       let (mut socket, addr) = self.listener.accept().await?;
       let nodes = Arc::clone(&self.nodes);
       let tasks = Arc::clone(&self.tasks);
+      let response_channels = Arc::clone(&self.response_channels);
 
       tokio::spawn(async move {
         log::debug!("Got a new connection from: {}", addr);
@@ -126,6 +130,7 @@ impl NodeManager {
         // Spawn task to handle node messages and track it
         let nodes_clone = Arc::clone(&nodes);
         let tasks_clone = Arc::clone(&tasks);
+        let response_channels_clone = Arc::clone(&response_channels);
         let handle = tokio::spawn(async move {
           log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
 
@@ -157,12 +162,25 @@ impl NodeManager {
                   }
                   NodeToManagerMessage::PotStatusUpdate(status_update) => {
                     log::info!("Pot status update from node {}: {:?}", node_id, status_update);
+                    // Check if there's a waiting response channel
+                    if let Some(sender) = response_channels_clone.write().await.remove(&node_id) {
+                      let response = format!("Pot '{}' status: {:?} - {}", 
+                        status_update.pot_id, 
+                        status_update.status,
+                        status_update.message.as_deref().unwrap_or(""));
+                      let _ = sender.send(response);
+                    }
                   }
                   NodeToManagerMessage::NodeStatusUpdate(status_update) => {
                     log::info!("Node status update: {:?}", status_update);
                   }
                   NodeToManagerMessage::NodeEvent(event) => {
                     log::info!("Node event from {}: {:?}", node_id, event);
+                    // Check if there's a waiting response channel and send the event
+                    if let Some(sender) = response_channels_clone.write().await.remove(&node_id) {
+                      let response = format!("{:?}", event);
+                      let _ = sender.send(response);
+                    }
                   }
                   _ => {
                     log::debug!("Unhandled message type from node {}", node_id);
@@ -209,7 +227,17 @@ impl NodeManager {
     node
   }
 
-  pub async fn send_command_to_node(&self, node_id: u64, command: ManagerToNodeMessage) -> Result<(), String> {
+  pub async fn send_command_to_node(
+    &self, 
+    node_id: u64, 
+    command: ManagerToNodeMessage,
+    response_channel: Option<oneshot::Sender<String>>
+  ) -> Result<(), String> {
+    // Store the response channel if provided
+    if let Some(sender) = response_channel {
+      self.response_channels.write().await.insert(node_id, sender);
+    }
+    
     let mut nodes = self.nodes.write().await;
 
     if let Some(node) = nodes.get_mut(&node_id) {

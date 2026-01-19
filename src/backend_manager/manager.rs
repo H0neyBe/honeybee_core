@@ -298,14 +298,30 @@ impl BackendManager {
       BackendCommand::NodeCommand { node_id, command } => {
         let node_command = ManagerToNodeMessage::NodeCommand(NodeCommand { node_id, command });
 
+        // Create a response channel
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
         match node_manager
-          .send_command_to_node(node_id, node_command)
+          .send_command_to_node(node_id, node_command, Some(tx))
           .await
         {
-          Ok(_) => BackendResponse::Success {
-            message: Some(format!("Command sent to node {}", node_id)),
-            data:    None,
-          },
+          Ok(_) => {
+            // Wait for response with timeout
+            match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
+              Ok(Ok(response)) => BackendResponse::Success {
+                message: Some(format!("Node {} responded", node_id)),
+                data:    Some(serde_json::json!({"response": response})),
+              },
+              Ok(Err(_)) => BackendResponse::Success {
+                message: Some(format!("Command sent to node {} (no response)", node_id)),
+                data:    None,
+              },
+              Err(_) => BackendResponse::Success {
+                message: Some(format!("Command sent to node {} (timeout waiting for response)", node_id)),
+                data:    None,
+              },
+            }
+          }
           Err(e) => BackendResponse::Failure(format!("Failed to send command to node {}: {}", node_id, e)),
         }
       }
