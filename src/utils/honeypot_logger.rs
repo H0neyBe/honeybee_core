@@ -41,6 +41,8 @@ impl HoneypotLogger {
   pub async fn log(&self, pot_log: bee_message::PotLog) {
     let collection = self.collection.lock().await;
     let mut doc = Document::new();
+    let pot_id = pot_log.pot_id.clone();
+    let log_type = pot_log.log_type.clone();
     doc.insert("node_id", pot_log.node_id.to_string());
     doc.insert("pot_id", pot_log.pot_id);
     doc.insert("pot_type", pot_log.pot_type);
@@ -65,7 +67,7 @@ impl HoneypotLogger {
       error!(
         "Failed to insert honeypot log to MongoDB (node_id={}, pot_id={}): {}",
         pot_log.node_id,
-        pot_log.pot_id,
+        pot_id,
         e
       );
       eprintln!("Failed to insert honeypot log to MongoDB: {}", e);
@@ -73,7 +75,7 @@ impl HoneypotLogger {
       debug!(
         "Inserted honeypot log (node_id={}, pot_id={})",
         pot_log.node_id,
-        pot_log.pot_id
+        pot_id
       );
     }
   }
