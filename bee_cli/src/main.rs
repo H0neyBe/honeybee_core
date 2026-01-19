@@ -72,17 +72,40 @@ impl HoneybeeCliClient {
     stream.write_all(b"\n").await?;
     stream.flush().await?;
 
-    println!("Command sent");
     let response = self.receive_response(stream).await?;
-    println!("Response received: {:?}", response);
+    self.display_response(response);
     Ok(())
+  }
+  
+  fn display_response(&self, response: ManagerToBackendMessage) {
+    match response {
+      ManagerToBackendMessage::BackendResponse(backend_response) => {
+        match backend_response {
+          bee_message::BackendResponse::Success { message, data } => {
+            println!("\n✅ Success");
+            if let Some(msg) = message {
+              println!("   {}", msg);
+            }
+            if let Some(data_val) = data {
+              println!("   Data: {}", serde_json::to_string_pretty(&data_val).unwrap_or_else(|_| format!("{:?}", data_val)));
+            }
+            println!();
+          }
+          bee_message::BackendResponse::Failure(error_msg) => {
+            println!("\n❌ Error: {}\n", error_msg);
+          }
+        }
+      }
+      _ => {
+        println!("\n⚠️  Unexpected response type\n");
+      }
+    }
   }
 
   async fn receive_response(&self, stream: &mut TcpStream) -> Result<ManagerToBackendMessage, Box<dyn Error>> {
     let mut reader = tokio::io::BufReader::new(stream);
     let mut response_line = String::new();
     reader.read_line(&mut response_line).await?;
-    println!("Raw response: {}", response_line.trim());
     let envelope: MessageEnvelope<ManagerToBackendMessage> = serde_json::from_str(&response_line)?;
     Ok(envelope.message)
   }
