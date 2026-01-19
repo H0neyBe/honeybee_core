@@ -15,21 +15,21 @@ use bee_message::PotLog;
 
 #[derive(Clone)]
 pub struct HoneypotLogger {
-  collection: Arc<Mutex<Collection<PotLog>>>,
+  collection: Arc<Mutex<Collection<bee_message::PotLog>>>,
 }
 
 impl HoneypotLogger {
   pub async fn new(uri: &str, database: &str, collection_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
     let client = Client::with_uri_str(uri).await?;
     let db = client.database(database);
-    let collection = db.collection::<PotLog>(collection_name);
+    let collection = db.collection::<bee_message::PotLog>(collection_name);
 
     Ok(HoneypotLogger {
       collection: Arc::new(Mutex::new(collection)),
     })
   }
 
-  pub async fn log(&self, pot_log: PotLog) {
+  pub async fn log(&self, pot_log: bee_message::PotLog) {
     let collection = self.collection.lock().await;
     if let Err(e) = collection.insert_one(pot_log).await {
       eprintln!("Failed to insert honeypot log to MongoDB: {}", e);
@@ -47,7 +47,7 @@ pub async fn init_honeypot_logger(uri: &str, database: &str, collection: &str) -
   Ok(())
 }
 
-pub async fn log_honeypot_event(pot_log: PotLog) {
+pub async fn log_honeypot_event(pot_log: bee_message::PotLog) {
   if let Some(logger) = HONEYPOT_LOGGER.get() {
     logger.log(pot_log).await;
   }
