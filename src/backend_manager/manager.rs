@@ -272,7 +272,7 @@ impl BackendManager {
     }
   }
 
-  async fn process_backend_command_static(
+  pub(crate) async fn process_backend_command_static(
     backend_id: u64, command: BackendCommand, node_manager: &NodeManager,
   ) -> BackendResponse {
     log::info!("Processing command from backend {}: {:?}", backend_id, command);

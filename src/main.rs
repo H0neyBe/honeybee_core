@@ -5,6 +5,7 @@
 mod backend_manager;
 mod node_manager;
 mod utils;
+mod ws_gateway;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use std::{
 };
 
 use backend_manager::BackendManager;
-use bee_comb::proxy::WebSocketProxy;
+use ws_gateway::WsGateway;
 use bee_config::Config;
 use bee_message::BidirectionalMessage;
 use node_manager::NodeManager;
@@ -44,6 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   println!("Starting Honeybee Core Node");
 
   let config = Config::load_or_create(Path::new("bee_config.toml"))?;
+  let config = Arc::new(config);
 
   match logger::init_logger(&config) {
     Ok(_) => log::debug!("Logger initialized successfully"),
@@ -108,16 +110,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
   });
 
-  // Start WebSocket proxy if enabled
+    // Start WebSocket gateway if enabled
   if config.proxy.enabled {
     let proxy_socket = std::net::SocketAddr::from(config.proxy.clone());
-    let backend_socket = format!("{}:{}", config.server.host, config.server.backend_port);
 
     tokio::spawn(async move {
-      log::info!("Starting WebSocket Proxy at {}", proxy_socket);
-      let proxy = WebSocketProxy::new(proxy_socket, backend_socket.clone());
-      if let Err(e) = proxy.run(proxy_socket).await {
-        log::error!("WebSocket Proxy error: {}", e);
+        log::info!("Starting WebSocket Gateway at {}", proxy_socket);
+      let gateway = WsGateway::new(proxy_socket, Arc::clone(&node_manager), Arc::clone(&config));
+      if let Err(e) = gateway.run().await {
+        log::error!("WebSocket Gateway error: {}", e);
       }
     });
   }

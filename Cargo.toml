@@ -52,6 +52,9 @@ bee_config.workspace = true
 bee_message.workspace = true
 bee_comb = { path = "./bee_comb" }
 mongodb = "3.2.0"
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+futures = "0.3"
 
 tracy-client = { version = "0.18.2", default-features = false, features = ["enable", "system-tracing", "context-switch-tracing", "sampling", "code-transfer", "broadcast"], optional = true }
 tracing = { version = "0.1.43", optional = true }

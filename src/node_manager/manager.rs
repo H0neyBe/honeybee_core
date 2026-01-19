@@ -9,14 +9,21 @@ use bee_message::{
   ManagerToBackendMessage,
   ManagerToNodeMessage,
   MessageEnvelope,
+  NodeStatus,
   NodeToManagerMessage,
+  PotLog,
   PROTOCOL_VERSION,
 };
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
-use tokio::sync::RwLock;
+use tokio::sync::broadcast;
 use tokio::sync::oneshot;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use serde::{
+  Deserialize,
+  Serialize,
+};
 
 use super::node::Node;
 
@@ -29,6 +36,16 @@ pub struct NodeManager {
   reader:            tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
   writer:            tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
   response_channels: Arc<RwLock<HashMap<u64, oneshot::Sender<String>>>>,
+  pot_log_tx:        broadcast::Sender<PotLog>,
+  node_event_tx:     broadcast::Sender<NodeEventUpdate>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NodeEventUpdate {
+  pub node_id:   u64,
+  pub node_name: Option<String>,
+  pub status:    Option<NodeStatus>,
+  pub event:     String,
 }
 
 impl NodeManager {
@@ -42,6 +59,9 @@ impl NodeManager {
 
     log::info!("Node Manager listening on: {}", addr);
 
+    let (pot_log_tx, _) = broadcast::channel(1024);
+    let (node_event_tx, _) = broadcast::channel(1024);
+
     Ok(NodeManager {
       nodes:             Arc::new(RwLock::new(HashMap::new())),
       listener,
@@ -50,6 +70,8 @@ impl NodeManager {
       reader,
       writer,
       response_channels: Arc::new(RwLock::new(HashMap::new())),
+      pot_log_tx,
+      node_event_tx,
     })
   }
 
@@ -60,6 +82,8 @@ impl NodeManager {
       let nodes = Arc::clone(&self.nodes);
       let tasks = Arc::clone(&self.tasks);
       let response_channels = Arc::clone(&self.response_channels);
+      let pot_log_tx = self.pot_log_tx.clone();
+      let node_event_tx = self.node_event_tx.clone();
 
       tokio::spawn(async move {
         log::debug!("Got a new connection from: {}", addr);
@@ -126,11 +150,19 @@ impl NodeManager {
 
         // Insert node into the registry
         nodes.write().await.insert(node_id, node);
+        let _ = node_event_tx.send(NodeEventUpdate {
+          node_id,
+          node_name: Some(registration.node_name.clone()),
+          status: Some(NodeStatus::Connected),
+          event: "connected".to_string(),
+        });
 
         // Spawn task to handle node messages and track it
         let nodes_clone = Arc::clone(&nodes);
         let tasks_clone = Arc::clone(&tasks);
         let response_channels_clone = Arc::clone(&response_channels);
+        let pot_log_tx_clone = pot_log_tx.clone();
+        let node_event_tx_clone = node_event_tx.clone();
         let handle = tokio::spawn(async move {
           log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
 
@@ -155,6 +187,7 @@ impl NodeManager {
                 match envelope.message {
                   NodeToManagerMessage::PotLog(pot_log) => {
                     log::debug!("Received honeypot log from node {}: {:?}", node_id, pot_log);
+                    let _ = pot_log_tx_clone.send(pot_log.clone());
                     // Forward to MongoDB honeypot logger
                     tokio::spawn(async move {
                       crate::utils::honeypot_logger::log_honeypot_event(pot_log).await;
@@ -173,6 +206,13 @@ impl NodeManager {
                   }
                   NodeToManagerMessage::NodeStatusUpdate(status_update) => {
                     log::info!("Node status update: {:?}", status_update);
+                    let node_name = nodes_clone.read().await.get(&node_id).map(|n| n.name.clone());
+                    let _ = node_event_tx_clone.send(NodeEventUpdate {
+                      node_id,
+                      node_name,
+                      status: Some(status_update.status.clone()),
+                      event: "status".to_string(),
+                    });
                   }
                   NodeToManagerMessage::NodeEvent(event) => {
                     log::info!("Node event from {}: {:?}", node_id, event);
@@ -196,6 +236,13 @@ impl NodeManager {
 
           // Cleanup when node disconnects
           log::info!("Node {} disconnected, cleaning up", node_id);
+          let node_name = nodes_clone.read().await.get(&node_id).map(|n| n.name.clone());
+          let _ = node_event_tx_clone.send(NodeEventUpdate {
+            node_id,
+            node_name,
+            status: None,
+            event: "disconnected".to_string(),
+          });
           nodes_clone.write().await.remove(&node_id);
           tasks_clone.write().await.remove(&node_id);
         });
@@ -266,5 +313,13 @@ impl NodeManager {
       .filter(|(_, node)| node.status == status)
       .map(|(id, _)| *id)
       .collect()
+  }
+
+  pub fn subscribe_pot_logs(&self) -> broadcast::Receiver<PotLog> {
+    self.pot_log_tx.subscribe()
+  }
+
+  pub fn subscribe_node_events(&self) -> broadcast::Receiver<NodeEventUpdate> {
+    self.node_event_tx.subscribe()
   }
 }
