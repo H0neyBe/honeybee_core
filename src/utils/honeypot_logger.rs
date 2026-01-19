@@ -51,7 +51,13 @@ impl HoneypotLogger {
 
     match to_bson(&pot_log.data) {
       Ok(Bson::Document(data_doc)) => {
-        doc.insert("data", data_doc);
+        let normalized = normalize_pot_log_data(data_doc);
+        for (k, v) in normalized.top_level {
+          doc.insert(k, v);
+        }
+        if !normalized.remaining.is_empty() {
+          doc.insert("data", Bson::Document(normalized.remaining));
+        }
       }
       Ok(other) => {
         doc.insert("data", other);
@@ -73,11 +79,64 @@ impl HoneypotLogger {
       eprintln!("Failed to insert honeypot log to MongoDB: {}", e);
     } else {
       debug!(
-        "Inserted honeypot log (node_id={}, pot_id={})",
+        "Inserted honeypot log (node_id={}, pot_id={}, log_type={})",
         pot_log.node_id,
-        pot_id
+        pot_id,
+        log_type
       );
     }
+  }
+}
+
+struct NormalizedPotLogData {
+  top_level: Document,
+  remaining: Document,
+}
+
+fn normalize_pot_log_data(mut data: Document) -> NormalizedPotLogData {
+  let mut top_level = Document::new();
+
+  // Drop noisy or duplicate keys
+  data.remove("event");
+  if let Some(source) = data.remove("source") {
+    top_level.insert("stream", source);
+  }
+  if let Some(stream) = data.remove("stream") {
+    top_level.insert("stream", stream);
+  }
+  data.remove("pot_type");
+
+  // Promote common fields to top-level
+  promote_field(&mut data, &mut top_level, "message");
+  promote_field(&mut data, &mut top_level, "timestamp");
+  promote_field(&mut data, &mut top_level, "system");
+  promote_field(&mut data, &mut top_level, "component");
+  promote_field(&mut data, &mut top_level, "level");
+  promote_field(&mut data, &mut top_level, "src_ip");
+  promote_field(&mut data, &mut top_level, "src_port");
+  promote_field(&mut data, &mut top_level, "dst_ip");
+  promote_field(&mut data, &mut top_level, "dst_port");
+  promote_field(&mut data, &mut top_level, "session");
+  promote_field(&mut data, &mut top_level, "username");
+  promote_field(&mut data, &mut top_level, "password");
+  promote_field(&mut data, &mut top_level, "auth");
+  promote_field(&mut data, &mut top_level, "protocol");
+  promote_field(&mut data, &mut top_level, "version");
+  promote_field(&mut data, &mut top_level, "hassh");
+  promote_field(&mut data, &mut top_level, "duration");
+  promote_field(&mut data, &mut top_level, "uuid");
+  promote_field(&mut data, &mut top_level, "sensor");
+  promote_field(&mut data, &mut top_level, "time");
+
+  NormalizedPotLogData {
+    top_level,
+    remaining: data,
+  }
+}
+
+fn promote_field(source: &mut Document, target: &mut Document, key: &str) {
+  if let Some(value) = source.remove(key) {
+    target.insert(key, value);
   }
 }
 
