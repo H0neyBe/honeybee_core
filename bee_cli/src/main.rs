@@ -18,6 +18,7 @@ use bee_message::{
   NodeCommandType,
   PROTOCOL_VERSION,
   PotId,
+  Unit,
 };
 use tokio::io::{
   AsyncBufReadExt,
@@ -105,7 +106,7 @@ impl HoneybeeCliClient {
             .expect("Node ID required")
             .parse()
             .expect("Invalid Node ID"),
-          command: NodeCommandType::GetInstalledPots,
+          command: NodeCommandType::GetInstalledPots(Unit),
         },
         Some(&"InstallPot") => {
           // InstallPot <node_id> <pot_id> <honeypot_type>

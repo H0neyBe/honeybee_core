@@ -35,6 +35,7 @@ pub use manager_to_node::{
   NodeCommand,
   NodeCommandType,
   RegistrationAck,
+  Unit,
 };
 pub use node::{
   manager_to_node,
