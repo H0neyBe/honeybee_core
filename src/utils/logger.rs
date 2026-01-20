@@ -25,26 +25,11 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         log::Level::Trace => record.level().to_string().purple().bold(),
       };
 
-      // Get thread name or ID
-      let mut thread_info = thread::current()
-        .name()
-        .map(|n| n.to_string())
-        .unwrap_or_else(|| format!("thread-{:?}", thread::current().id()));
-
-      // Try to get Tokio task name if available
-      if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        if let Some(task_id) = tokio::task::try_id() {
-          thread_info = format!("{}[task-{:?}]", thread_info, task_id);
-        }
-      }
-
-      // Get target (module path) and line number
-      #[cfg(debug_assertions)]
-      let location = if let Some(line) = record.line() {
-        format!("{}:{}", record.target(), line)
-      } else {
-        record.target().to_string()
-      };
+      // Get simplified module name
+      let module = record.target()
+        .split("::")
+        .last()
+        .unwrap_or(record.target());
 
       // Log to MongoDB if enabled
       if mongodb_enabled {
@@ -56,34 +41,26 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         );
       }
 
-      #[cfg(debug_assertions)]
-      out.finish(format_args!(
-        "[{}][{}][{}][{}] {}",
-        chrono::Local::now()
-          .format("%Y-%m-%d %H:%M:%S.%3f")
-          .to_string()
-          .black()
-          .dimmed(),
-        level_colored,
-        thread_info.cyan(),
-        location.bright_black(),
-        message
-      ));
-
-      #[cfg(not(debug_assertions))]
+      // Simplified format: [TIME][LEVEL][MODULE] message
       out.finish(format_args!(
         "[{}][{}][{}] {}",
         chrono::Local::now()
-          .format("%Y-%m-%d %H:%M:%S.%3f")
+          .format("%H:%M:%S")
           .to_string()
-          .black()
           .dimmed(),
         level_colored,
-        thread_info.cyan(),
+        module.cyan(),
         message
       ))
     })
     .level(log_level)
+    // Filter out noisy third-party crates
+    .level_for("hickory_proto", log::LevelFilter::Warn)
+    .level_for("hickory_resolver", log::LevelFilter::Warn)
+    .level_for("rustls", log::LevelFilter::Warn)
+    .level_for("tower_http", log::LevelFilter::Info)
+    .level_for("hyper", log::LevelFilter::Warn)
+    .level_for("tokio", log::LevelFilter::Warn)
     .chain(std::io::stdout());
 
   let mut base_dispatch = fern::Dispatch::new().chain(console_dispatch);

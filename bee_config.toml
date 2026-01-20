@@ -5,7 +5,7 @@ backend_port = 9002
 debug = false
 
 [logging]
-level = "debug"
+level = "info"
 folder = "logs"
 force_color = true
 mongodb = true
