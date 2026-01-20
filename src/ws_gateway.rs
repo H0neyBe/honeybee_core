@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{ConnectInfo, State};
@@ -11,6 +12,7 @@ use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc};
+use tokio::time::timeout;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -57,6 +59,7 @@ enum WsOutgoing {
   Subscribed { id: String, topic: String },
   Unsubscribed { id: String, topic: String },
   Pong { id: String },
+  Ping { id: String },
 }
 
 enum OutgoingMessage {
@@ -122,6 +125,7 @@ async fn handle_websocket(ws: WebSocket, state: WsState, client_addr: SocketAddr
   let mut subscriptions: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
   let mut backend_id: Option<u64> = None;
 
+  // Spawn task to send outgoing messages
   let outgoing_task = tokio::spawn(async move {
     while let Some(msg) = outgoing_rx.recv().await {
       let text = match msg {
@@ -130,14 +134,35 @@ async fn handle_websocket(ws: WebSocket, state: WsState, client_addr: SocketAddr
       };
       if let Some(text) = text {
         if ws_sender.send(Message::Text(text)).await.is_err() {
+          log::warn!("Failed to send message to client, connection likely closed");
           break;
         }
       }
     }
   });
 
-  while let Some(msg) = ws_receiver.next().await {
-    match msg {
+  // Spawn keepalive/ping task
+  let outgoing_tx_ping = outgoing_tx.clone();
+  let keepalive_task = tokio::spawn(async move {
+    let mut interval = tokio::time::interval(Duration::from_secs(30));
+    loop {
+      interval.tick().await;
+      let ping_msg = OutgoingMessage::Json(WsOutgoing::Ping { id: "keepalive".to_string() });
+      if outgoing_tx_ping.send(ping_msg).is_err() {
+        break;
+      }
+    }
+  });
+
+  // Process incoming messages with timeout
+  loop {
+    match timeout(Duration::from_secs(60), ws_receiver.next()).await {
+      Ok(Some(msg)) => {
+  // Process incoming messages with timeout
+  loop {
+    match timeout(Duration::from_secs(60), ws_receiver.next()).await {
+      Ok(Some(msg)) => {
+        match msg {
       Ok(Message::Text(text)) => {
         if let Ok(envelope) = serde_json::from_str::<MessageEnvelope<BackendToManagerMessage>>(&text) {
           if let Some(response) = handle_legacy_backend_message(envelope, &state.node_manager, &mut backend_id).await {
@@ -201,20 +226,39 @@ async fn handle_websocket(ws: WebSocket, state: WsState, client_addr: SocketAddr
         log::info!("WebSocket close frame from {}: {:?}", client_addr, frame);
         break;
       }
-      Ok(Message::Ping(_)) => {}
-      Ok(Message::Pong(_)) => {}
-      Ok(Message::Binary(_)) => {}
+      Ok(Message::Ping(data)) => {
+        log::debug!("Received ping from {}", client_addr);
+        // Axum handles pong automatically
+      }
+      Ok(Message::Pong(_)) => {
+        log::debug!("Received pong from {}", client_addr);
+      }
+      Ok(Message::Binary(_)) => {
+        log::warn!("Received binary message from {} (not supported)", client_addr);
+      }
       Err(e) => {
         log::error!("WebSocket error from {}: {}", client_addr, e);
+        break;
+      }
+        }
+      }
+      Ok(None) => {
+        log::info!("WebSocket stream ended for {}", client_addr);
+        break;
+      }
+      Err(_) => {
+        log::warn!("WebSocket timeout for {}, closing connection", client_addr);
         break;
       }
     }
   }
 
+  // Cleanup
   for (_, handle) in subscriptions.drain() {
     handle.abort();
   }
   outgoing_task.abort();
+  keepalive_task.abort();
 
   log::info!("WebSocket connection from {} closed", client_addr);
 }
