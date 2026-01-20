@@ -158,88 +158,84 @@ async fn handle_websocket(ws: WebSocket, state: WsState, client_addr: SocketAddr
   loop {
     match timeout(Duration::from_secs(60), ws_receiver.next()).await {
       Ok(Some(msg)) => {
-  // Process incoming messages with timeout
-  loop {
-    match timeout(Duration::from_secs(60), ws_receiver.next()).await {
-      Ok(Some(msg)) => {
         match msg {
-      Ok(Message::Text(text)) => {
-        if let Ok(envelope) = serde_json::from_str::<MessageEnvelope<BackendToManagerMessage>>(&text) {
-          if let Some(response) = handle_legacy_backend_message(envelope, &state.node_manager, &mut backend_id).await {
-            let _ = outgoing_tx.send(response);
-          }
-          continue;
-        }
-
-        let parsed = serde_json::from_str::<WsIncoming>(&text);
-        let incoming = match parsed {
-          Ok(msg) => msg,
-          Err(e) => {
-            let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Response {
-              id: "unknown".to_string(),
-              ok: false,
-              data: None,
-              error: Some(format!("Invalid message: {}", e)),
-            }));
-            continue;
-          }
-        };
-
-        match incoming {
-          WsIncoming::Ping { id } => {
-            let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Pong { id }));
-          }
-          WsIncoming::Request { id, action, params } => {
-            let response = handle_request(id, action, params, &state).await;
-            let _ = outgoing_tx.send(OutgoingMessage::Json(response));
-          }
-          WsIncoming::Subscribe { id, topic, params } => {
-            if subscriptions.contains_key(&topic) {
-              let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Subscribed { id, topic }));
+          Ok(Message::Text(text)) => {
+            if let Ok(envelope) = serde_json::from_str::<MessageEnvelope<BackendToManagerMessage>>(&text) {
+              if let Some(response) = handle_legacy_backend_message(envelope, &state.node_manager, &mut backend_id).await {
+                let _ = outgoing_tx.send(response);
+              }
               continue;
             }
 
-            match subscribe_topic(topic.clone(), params, &state, outgoing_tx.clone()).await {
-              Ok(handle) => {
-                subscriptions.insert(topic.clone(), handle);
-                let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Subscribed { id, topic }));
-              }
+            let parsed = serde_json::from_str::<WsIncoming>(&text);
+            let incoming = match parsed {
+              Ok(msg) => msg,
               Err(e) => {
                 let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Response {
-                  id,
+                  id: "unknown".to_string(),
                   ok: false,
                   data: None,
-                  error: Some(e),
+                  error: Some(format!("Invalid message: {}", e)),
                 }));
+                continue;
+              }
+            };
+
+            match incoming {
+              WsIncoming::Ping { id } => {
+                let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Pong { id }));
+              }
+              WsIncoming::Request { id, action, params } => {
+                let response = handle_request(id, action, params, &state).await;
+                let _ = outgoing_tx.send(OutgoingMessage::Json(response));
+              }
+              WsIncoming::Subscribe { id, topic, params } => {
+                if subscriptions.contains_key(&topic) {
+                  let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Subscribed { id, topic }));
+                  continue;
+                }
+
+                match subscribe_topic(topic.clone(), params, &state, outgoing_tx.clone()).await {
+                  Ok(handle) => {
+                    subscriptions.insert(topic.clone(), handle);
+                    let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Subscribed { id, topic }));
+                  }
+                  Err(e) => {
+                    let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Response {
+                      id,
+                      ok: false,
+                      data: None,
+                      error: Some(e),
+                    }));
+                  }
+                }
+              }
+              WsIncoming::Unsubscribe { id, topic } => {
+                if let Some(handle) = subscriptions.remove(&topic) {
+                  handle.abort();
+                }
+                let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Unsubscribed { id, topic }));
               }
             }
           }
-          WsIncoming::Unsubscribe { id, topic } => {
-            if let Some(handle) = subscriptions.remove(&topic) {
-              handle.abort();
-            }
-            let _ = outgoing_tx.send(OutgoingMessage::Json(WsOutgoing::Unsubscribed { id, topic }));
+          Ok(Message::Close(frame)) => {
+            log::info!("WebSocket close frame from {}: {:?}", client_addr, frame);
+            break;
           }
-        }
-      }
-      Ok(Message::Close(frame)) => {
-        log::info!("WebSocket close frame from {}: {:?}", client_addr, frame);
-        break;
-      }
-      Ok(Message::Ping(data)) => {
-        log::debug!("Received ping from {}", client_addr);
-        // Axum handles pong automatically
-      }
-      Ok(Message::Pong(_)) => {
-        log::debug!("Received pong from {}", client_addr);
-      }
-      Ok(Message::Binary(_)) => {
-        log::warn!("Received binary message from {} (not supported)", client_addr);
-      }
-      Err(e) => {
-        log::error!("WebSocket error from {}: {}", client_addr, e);
-        break;
-      }
+          Ok(Message::Ping(_)) => {
+            log::debug!("Received ping from {}", client_addr);
+            // Axum handles pong automatically
+          }
+          Ok(Message::Pong(_)) => {
+            log::debug!("Received pong from {}", client_addr);
+          }
+          Ok(Message::Binary(_)) => {
+            log::warn!("Received binary message from {} (not supported)", client_addr);
+          }
+          Err(e) => {
+            log::error!("WebSocket error from {}: {}", client_addr, e);
+            break;
+          }
         }
       }
       Ok(None) => {
