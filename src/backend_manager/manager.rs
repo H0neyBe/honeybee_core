@@ -177,6 +177,7 @@ impl BackendManager {
     // Spawn a broadcast task for this backend
     let backends_clone = Arc::clone(&backends);
     let node_manager = Arc::clone(&node_manager);
+    let node_manager_broadcast = Arc::clone(&node_manager);
     
     // We need to capture the backend_id to know who to send to (wait, we have the socket writer in 'backend' struct)
     // Actually, 'backend' struct owns the writer. But here 'backend' is inserted into map.
@@ -188,9 +189,9 @@ impl BackendManager {
     
     tokio::spawn(async move {
         // Subscribe to events
-        let mut pot_status_updates = node_manager.subscribe_pot_status_updates();
-        let mut node_events = node_manager.subscribe_node_events();
-        let mut node_messages = node_manager.subscribe_node_messages();
+        let mut pot_status_updates = node_manager_broadcast.subscribe_pot_status_updates();
+        let mut node_events = node_manager_broadcast.subscribe_node_events();
+        let mut node_messages = node_manager_broadcast.subscribe_node_messages();
         
         loop {
             tokio::select! {
