@@ -47,13 +47,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let config = Config::load_or_create(Path::new("bee_config.toml"))?;
   let config = Arc::new(config);
 
-  match logger::init_logger(&config) {
-    Ok(_) => log::debug!("Logger initialized successfully"),
+  let log_receiver = match logger::init_logger(&config) {
+    Ok(rx) => {
+        log::debug!("Logger initialized successfully");
+        rx
+    },
     Err(e) => {
       eprintln!("Failed to initialize logger: {}", e);
       return Err(e);
     }
-  }
+  };
 
   // Initialize MongoDB logger if enabled
   if config.logging.mongodb && !config.database.mongodb_uri.is_empty() {
@@ -101,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let node_manager = Arc::new(node_manager);
 
   let backend_manager =
-    BackendManager::build(&config, backend_manager_reader, node_manager_writer, Arc::clone(&node_manager)).await?;
+    BackendManager::build(&config, backend_manager_reader, node_manager_writer, Arc::clone(&node_manager), log_receiver).await?;
 
   let node_manager_clone = Arc::clone(&node_manager);
   tokio::spawn(async move {

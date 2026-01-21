@@ -19,6 +19,15 @@ pub enum ManagerToBackendMessage {
   },
   NodeStatusUpdate(NodeStatusUpdate),
   PotStatusUpdate(PotStatusUpdate),
+  CoreLog(CoreLogMessage),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoreLogMessage {
+  pub level: String,
+  pub target: String,
+  pub message: String,
+  pub timestamp: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

@@ -6,7 +6,10 @@ use colored::Colorize;
 
 use super::mongo_logger;
 
-pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+use bee_message::backend::manager_to_backend::CoreLogMessage;
+use tokio::sync::broadcast;
+
+pub fn init_logger(config: &Config) -> Result<broadcast::Receiver<CoreLogMessage>, Box<dyn std::error::Error>> {
   let log_level: log::LevelFilter = config.logging.level.parse().unwrap();
 
   if config.logging.force_color {
@@ -63,7 +66,27 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     .level_for("tokio", log::LevelFilter::Warn)
     .chain(std::io::stdout());
 
-  let mut base_dispatch = fern::Dispatch::new().chain(console_dispatch);
+  let (tx, rx) = broadcast::channel(100);
+  let tx_clone = tx.clone();
+
+  let broadcast_dispatch = fern::Dispatch::new()
+    .format(move |out, message, record| {
+        out.finish(format_args!("{}", message))
+    })
+    .chain(fern::Output::call(move |record| {
+        let timestamp = chrono::Local::now().format("%H:%M:%S").to_string();
+        let msg = CoreLogMessage {
+            level: record.level().to_string(),
+            target: record.target().to_string(),
+            message: record.args().to_string(),
+            timestamp,
+        };
+        let _ = tx_clone.send(msg);
+    }));
+
+  let mut base_dispatch = fern::Dispatch::new()
+      .chain(console_dispatch)
+      .chain(broadcast_dispatch);
 
   // File output without colors
   if let Some(folder) = &config.logging.folder {
@@ -112,7 +135,5 @@ pub fn init_logger(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     base_dispatch = base_dispatch.chain(file_dispatch);
   }
 
-  base_dispatch.apply()?;
-
-  Ok(())
+  Ok(rx)
 }

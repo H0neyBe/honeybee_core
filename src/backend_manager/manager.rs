@@ -28,6 +28,8 @@ use tokio::sync::{
   RwLock,
 };
 use tokio::task::JoinHandle;
+use tokio::sync::broadcast;
+use bee_message::backend::manager_to_backend::CoreLogMessage;
 
 use super::backend::Backend;
 use crate::node_manager::manager::NodeManager;
@@ -41,12 +43,14 @@ pub struct BackendManager {
   reader:       tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
   writer:       tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>,
   node_manager: Arc<NodeManager>,
+  log_receiver: broadcast::Receiver<CoreLogMessage>,
 }
 
 impl BackendManager {
   pub async fn build(
     config: &Config, reader: tokio::sync::mpsc::UnboundedReceiver<BidirectionalMessage>,
     writer: tokio::sync::mpsc::UnboundedSender<BidirectionalMessage>, node_manager: Arc<NodeManager>,
+    log_receiver: broadcast::Receiver<CoreLogMessage>,
   ) -> Result<Self, std::io::Error> {
     let address = format!("{}:{}", config.server.host, config.server.backend_port);
     let listener = TcpListener::bind(&address).await?;
@@ -62,6 +66,7 @@ impl BackendManager {
       reader,
       writer,
       node_manager,
+      log_receiver,
     })
   }
 
@@ -75,9 +80,10 @@ impl BackendManager {
       let backends = Arc::clone(&self.backends);
       let tasks = Arc::clone(&self.tasks);
       let node_manager = Arc::clone(&self.node_manager);
+      let log_receiver = self.log_receiver.resubscribe();
 
       tokio::spawn(async move {
-        if let Err(e) = Self::handle_backend_connection(stream, backends, tasks, node_manager).await {
+        if let Err(e) = Self::handle_backend_connection(stream, backends, tasks, node_manager, log_receiver).await {
           log::error!("Backend connection error from {}: {}", addr, e);
         }
       });
@@ -135,6 +141,7 @@ impl BackendManager {
   async fn handle_backend_connection(
     stream: tokio::net::TcpStream, backends: Arc<RwLock<HashMap<u64, Backend>>>,
     tasks: Arc<RwLock<HashMap<u64, JoinHandle<()>>>>, node_manager: Arc<NodeManager>,
+    mut log_receiver: broadcast::Receiver<CoreLogMessage>,
   ) -> Result<(), String> {
     log::info!("New TCP backend connection established");
 
@@ -192,9 +199,18 @@ impl BackendManager {
         let mut pot_status_updates = node_manager_broadcast.subscribe_pot_status_updates();
         let mut node_events = node_manager_broadcast.subscribe_node_events();
         let mut node_messages = node_manager_broadcast.subscribe_node_messages();
-        
+
         loop {
             tokio::select! {
+                Ok(log) = log_receiver.recv() => {
+                    let msg = bee_message::ManagerToBackendMessage::CoreLog(log);
+                    let mut lock = backends_clone.write().await;
+                    if let Some(backend) = lock.get_mut(&backend_id) {
+                         let _ = backend.send_message(msg).await;
+                    } else {
+                        break;
+                    }
+                }
                 Ok(update) = pot_status_updates.recv() => {
                     // Forward PotStatusUpdate
                     let msg = bee_message::ManagerToBackendMessage::PotStatusUpdate(update);
