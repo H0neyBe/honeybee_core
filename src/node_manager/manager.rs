@@ -12,6 +12,7 @@ use bee_message::{
   NodeStatus,
   NodeToManagerMessage,
   PotLog,
+  PotStatusUpdate,
   PROTOCOL_VERSION,
 };
 use tokio::io::AsyncReadExt;
