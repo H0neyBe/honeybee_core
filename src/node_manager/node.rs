@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bee_message::{
   ManagerToNodeMessage,
@@ -6,6 +7,7 @@ use bee_message::{
   NodeRegistration,
   NodeStatus,
   NodeToManagerMessage,
+  NodeType,
   PROTOCOL_VERSION,
 };
 use serde::{
@@ -26,6 +28,9 @@ pub struct Node {
   pub id:         u64,
   pub name:       String,
   pub status:     NodeStatus,
+  pub ip:         String,
+  pub node_type:  NodeType,
+  pub last_seen:  u64,
   #[serde(skip)]
   pub tcp_writer: Option<Arc<Mutex<tokio::net::tcp::OwnedWriteHalf>>>,
   #[serde(skip)]
@@ -38,6 +43,9 @@ impl Node {
       id,
       name,
       status: NodeStatus::Connected,
+      ip: String::from("0.0.0.0"),
+      node_type: NodeType::Full,
+      last_seen: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
       tcp_writer: None,
       tcp_reader: None,
     }
@@ -120,6 +128,9 @@ impl From<NodeRegistration> for Node {
       id:         reg.node_id,
       name:       reg.node_name,
       status:     NodeStatus::Connected,
+      ip:         reg.address,
+      node_type:  reg.node_type,
+      last_seen:  SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
       tcp_writer: None,
       tcp_reader: None,
     }

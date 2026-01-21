@@ -150,6 +150,11 @@ impl NodeManager {
           }
         };
 
+        // if the node reports 0.0.0.0, use the address from the connection
+        if node.ip == "0.0.0.0" || node.ip.is_empty() {
+          node.ip = addr.ip().to_string();
+        }
+
         let node_id = node.id;
         log::info!("Node {} ({}) registered from {}", node_id, node.name, addr);
 
