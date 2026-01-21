@@ -1,3 +1,7 @@
+use serde::{
+  Deserialize,
+  Serialize,
+};
 use crate::{
   NodeEvent,
   NodeStatusUpdate,
