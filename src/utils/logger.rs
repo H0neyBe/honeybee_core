@@ -135,5 +135,7 @@ pub fn init_logger(config: &Config) -> Result<broadcast::Receiver<CoreLogMessage
     base_dispatch = base_dispatch.chain(file_dispatch);
   }
 
+  base_dispatch.apply()?;
+
   Ok(rx)
 }
