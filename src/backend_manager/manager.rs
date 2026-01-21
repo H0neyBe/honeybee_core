@@ -205,9 +205,9 @@ impl BackendManager {
                         break;
                     }
                 }
-                Ok(msg) = node_messages.recv() => {
-                    // Forward NodeEvent (Alarm/Info)
-                    let msg = bee_message::ManagerToBackendMessage::NodeEvent(msg);
+                Ok((node_id, event)) = node_messages.recv() => {
+                    // Forward NodeEvent (Alarm/Info) with ID
+                    let msg = bee_message::ManagerToBackendMessage::NodeEvent { event, node_id };
                     let mut lock = backends_clone.write().await;
                     if let Some(backend) = lock.get_mut(&backend_id) {
                          let _ = backend.send_message(msg).await;

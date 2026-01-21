@@ -13,7 +13,10 @@ pub enum ManagerToBackendMessage {
   ManagerRegistrationAck(BackendRegistrationAck),
   CommandResponse,
   BackendResponse(BackendResponse),
-  NodeEvent(NodeEvent),
+  NodeEvent {
+    event:   NodeEvent,
+    node_id: u64,
+  },
   NodeStatusUpdate(NodeStatusUpdate),
   PotStatusUpdate(PotStatusUpdate),
 }

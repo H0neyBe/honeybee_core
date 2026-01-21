@@ -40,7 +40,7 @@ pub struct NodeManager {
   pot_log_tx:        broadcast::Sender<PotLog>,
   node_event_tx:     broadcast::Sender<NodeEventUpdate>,
   pot_status_tx:     broadcast::Sender<PotStatusUpdate>,
-  node_message_tx:   broadcast::Sender<bee_message::NodeEvent>,
+  node_message_tx:   broadcast::Sender<(u64, bee_message::NodeEvent)>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -236,7 +236,7 @@ impl NodeManager {
                   NodeToManagerMessage::NodeEvent(event) => {
                     log::info!("Node event from {}: {:?}", node_id, event);
                     // Broadcast event
-                    let _ = node_message_tx_clone.send(event.clone());
+                    let _ = node_message_tx_clone.send((node_id, event.clone()));
 
                     // Check if there's a waiting response channel and send the event
                     if let Some(sender) = response_channels_clone.write().await.remove(&node_id) {
@@ -349,7 +349,7 @@ impl NodeManager {
     self.pot_status_tx.subscribe()
   }
 
-  pub fn subscribe_node_messages(&self) -> broadcast::Receiver<bee_message::NodeEvent> {
+  pub fn subscribe_node_messages(&self) -> broadcast::Receiver<(u64, bee_message::NodeEvent)> {
     self.node_message_tx.subscribe()
   }
 }
