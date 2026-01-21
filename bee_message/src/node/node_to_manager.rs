@@ -38,6 +38,7 @@ pub struct NodeStatusUpdate {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "event_type")]
 pub enum NodeEvent {
   Started,
   Stopped,
