@@ -82,15 +82,14 @@ impl Backend {
     }
   }
 
-  /// Send a response back to the backend
-  pub async fn send_response(&mut self, response: BackendResponse) -> Result<(), String> {
+  /// Send a generic message to the backend
+  pub async fn send_message(&mut self, message: ManagerToBackendMessage) -> Result<(), String> {
     let writer = self
       .writer
       .as_ref()
       .ok_or_else(|| "No writer available".to_string())?;
     let mut locked_writer = writer.lock().await;
 
-    let message = ManagerToBackendMessage::BackendResponse(response);
     let envelope = MessageEnvelope::new(PROTOCOL_VERSION, message);
     let json = serde_json::to_string(&envelope).map_err(|e| e.to_string())? + "\n";
 
@@ -103,8 +102,15 @@ impl Backend {
       .await
       .map_err(|e| e.to_string())?;
 
-    log::debug!("Sent response to backend {}", self.id);
     Ok(())
+  }
+
+  /// Send a response back to the backend
+  pub async fn send_response(&mut self, response: BackendResponse) -> Result<(), String> {
+    let message = ManagerToBackendMessage::BackendResponse(response);
+    self.send_message(message).await.map(|_| {
+      log::debug!("Sent response to backend {}", self.id);
+    })
   }
 
   /// Send an error response back to the backend

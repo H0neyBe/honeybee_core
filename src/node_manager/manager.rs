@@ -38,6 +38,8 @@ pub struct NodeManager {
   response_channels: Arc<RwLock<HashMap<u64, oneshot::Sender<String>>>>,
   pot_log_tx:        broadcast::Sender<PotLog>,
   node_event_tx:     broadcast::Sender<NodeEventUpdate>,
+  pot_status_tx:     broadcast::Sender<PotStatusUpdate>,
+  node_message_tx:   broadcast::Sender<bee_message::NodeEvent>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -61,6 +63,8 @@ impl NodeManager {
 
     let (pot_log_tx, _) = broadcast::channel(1024);
     let (node_event_tx, _) = broadcast::channel(1024);
+    let (pot_status_tx, _) = broadcast::channel(1024);
+    let (node_message_tx, _) = broadcast::channel(1024);
 
     Ok(NodeManager {
       nodes:             Arc::new(RwLock::new(HashMap::new())),
@@ -72,6 +76,8 @@ impl NodeManager {
       response_channels: Arc::new(RwLock::new(HashMap::new())),
       pot_log_tx,
       node_event_tx,
+      pot_status_tx,
+      node_message_tx,
     })
   }
 
@@ -84,6 +90,8 @@ impl NodeManager {
       let response_channels = Arc::clone(&self.response_channels);
       let pot_log_tx = self.pot_log_tx.clone();
       let node_event_tx = self.node_event_tx.clone();
+      let pot_status_tx = self.pot_status_tx.clone();
+      let node_message_tx = self.node_message_tx.clone();
 
       tokio::spawn(async move {
         log::debug!("Got a new connection from: {}", addr);
@@ -168,6 +176,8 @@ impl NodeManager {
         let response_channels_clone = Arc::clone(&response_channels);
         let pot_log_tx_clone = pot_log_tx.clone();
         let node_event_tx_clone = node_event_tx.clone();
+        let pot_status_tx_clone = pot_status_tx.clone();
+        let node_message_tx_clone = node_message_tx.clone();
         let handle = tokio::spawn(async move {
           log::debug!("Started message handler for node: {} (task: {:?})", node_id, tokio::task::id());
 
@@ -200,6 +210,9 @@ impl NodeManager {
                   }
                   NodeToManagerMessage::PotStatusUpdate(status_update) => {
                     log::info!("Pot status update from node {}: {:?}", node_id, status_update);
+                    // Broadcast the update
+                    let _ = pot_status_tx_clone.send(status_update.clone());
+                    
                     // Check if there's a waiting response channel
                     if let Some(sender) = response_channels_clone.write().await.remove(&node_id) {
                       let response = format!("Pot '{}' status: {:?} - {}", 
@@ -221,6 +234,9 @@ impl NodeManager {
                   }
                   NodeToManagerMessage::NodeEvent(event) => {
                     log::info!("Node event from {}: {:?}", node_id, event);
+                    // Broadcast event
+                    let _ = node_message_tx_clone.send(event.clone());
+
                     // Check if there's a waiting response channel and send the event
                     if let Some(sender) = response_channels_clone.write().await.remove(&node_id) {
                       let response = format!("{:?}", event);
@@ -326,5 +342,13 @@ impl NodeManager {
 
   pub fn subscribe_node_events(&self) -> broadcast::Receiver<NodeEventUpdate> {
     self.node_event_tx.subscribe()
+  }
+
+  pub fn subscribe_pot_status_updates(&self) -> broadcast::Receiver<PotStatusUpdate> {
+    self.pot_status_tx.subscribe()
+  }
+
+  pub fn subscribe_node_messages(&self) -> broadcast::Receiver<bee_message::NodeEvent> {
+    self.node_message_tx.subscribe()
   }
 }

@@ -167,9 +167,71 @@ impl BackendManager {
       writer.flush().await.map_err(|e| e.to_string())?;
     }
 
-    // Create backend entry with write half only
+    // Use correct backend type from registration if possible, currently we don't extract it from handle_registration
+    // We need to modify handle_registration to return the full registration or at least the type
+    // But for now, we can trust the log "Cli" or just default to Web/Full.
+    // Ideally we should fix handle_registration
     let backend = Backend::new_with_writer(backend_id, bee_message::BackendType::Web, Arc::clone(&write_half));
     backends.write().await.insert(backend_id, backend);
+
+    // Spawn a broadcast task for this backend
+    let backends_clone = Arc::clone(&backends);
+    let node_manager = Arc::clone(&node_manager);
+    
+    // We need to capture the backend_id to know who to send to (wait, we have the socket writer in 'backend' struct)
+    // Actually, 'backend' struct owns the writer. But here 'backend' is inserted into map.
+    // So to send to THIS backend, we need access to it.
+    // Iterating map is inefficient if we just want to push to THIS connection.
+    // But 'handle_backend_connection' owns the 'read_half'. 'write_half' is shared.
+    // 'Backend' struct has 'writer'.
+    // We can interact with 'backend' via the map.
+    
+    tokio::spawn(async move {
+        // Subscribe to events
+        let mut pot_status_updates = node_manager.subscribe_pot_status_updates();
+        let mut node_events = node_manager.subscribe_node_events();
+        let mut node_messages = node_manager.subscribe_node_messages();
+        
+        loop {
+            tokio::select! {
+                Ok(update) = pot_status_updates.recv() => {
+                    // Forward PotStatusUpdate
+                    let msg = bee_message::ManagerToBackendMessage::PotStatusUpdate(update);
+                    let mut lock = backends_clone.write().await;
+                    if let Some(backend) = lock.get_mut(&backend_id) {
+                         let _ = backend.send_message(msg).await;
+                    } else {
+                        break;
+                    }
+                }
+                Ok(msg) = node_messages.recv() => {
+                    // Forward NodeEvent (Alarm/Info)
+                    let msg = bee_message::ManagerToBackendMessage::NodeEvent(msg);
+                    let mut lock = backends_clone.write().await;
+                    if let Some(backend) = lock.get_mut(&backend_id) {
+                         let _ = backend.send_message(msg).await;
+                    } else {
+                        break;
+                    }
+                }
+                Ok(evt_update) = node_events.recv() => {
+                    // Forward NodeEventUpdate (Status changes)
+                    if let Some(status) = evt_update.status {
+                        let msg = bee_message::ManagerToBackendMessage::NodeStatusUpdate(bee_message::NodeStatusUpdate {
+                            node_id: evt_update.node_id,
+                            status: status,
+                        });
+                         let mut lock = backends_clone.write().await;
+                        if let Some(backend) = lock.get_mut(&backend_id) {
+                             let _ = backend.send_message(msg).await;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
 
     // Handle messages from this backend
     loop {
